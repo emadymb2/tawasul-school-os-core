@@ -1,0 +1,17 @@
+{#<!--
+Tawasul: the flexible, open school platform
+Founded by Afhaam Technology at . Built by Afhaam Technology, Fiksu Tiliratkaisut OY and the Tawasul community (https://tawasul.fi/about/)
+Copyright © 2010, Tawasul Foundation
+Tawasul™, Tawasul Education Ltd. (Hong Kong)
+
+This is a Tawasul template file, written in HTML and Twig syntax.
+For info about editing, see: https://twig.symfony.com/doc/2.x/
+-->#}
+<h1 class="mt-6 mb-4 pt-1 uppercase text-2xl text-gray-800">
+    {{ __('Oh no!') }}
+</h1>
+<p>
+    {{ error ? error : __('Something has gone wrong. Please try again or contact your system administrator.') }}<br/>
+    <br/>
+    {{ message ? message : __('An error has occurred. This could mean a number of different things, but generally indicates that you have a misspelt address, or are trying to access a page that you are not permitted to access.') }} {{ __('If you cannot solve this problem by retyping the address, or through other means, please contact your system administrator.') }}<br/>
+</p>

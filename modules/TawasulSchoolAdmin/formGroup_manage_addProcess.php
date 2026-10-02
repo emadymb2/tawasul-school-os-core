@@ -1,0 +1,89 @@
+<?php
+/*
+Gibbon: the flexible, open school platform
+Founded by Ross Parker at ICHK Secondary. Built by Ross Parker, Sandra Kuipers and the Gibbon community (https://gibbonedu.org/about/)
+Copyright © 2010, Gibbon Foundation
+Gibbon™, Gibbon Education Ltd. (Hong Kong)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
+use TawasulOS\Data\Validator;
+
+require_once __DIR__ . '/../../tawasul.php';
+
+$_POST = $container->get(Validator::class)->sanitize($_POST, ['website' => 'URL']);
+
+$tawasulSchoolYearID = $_POST['tawasulSchoolYearID'] ?? '';
+$URL = $session->get('absoluteURL').'/index.php?q=/modules/'.getModuleName($_POST['address'])."/formGroup_manage_add.php&tawasulSchoolYearID=$tawasulSchoolYearID";
+
+if (isActionAccessible($guid, $connection2, '/modules/TawasulSchoolAdmin/formGroup_manage_add.php') == false) {
+    $URL .= '&return=error0';
+    header("Location: {$URL}");
+} else {
+    //Proceed!
+    //Validate Inputs
+    $name = $_POST['name'] ?? '';
+    $nameShort = $_POST['nameShort'] ?? '';
+    $tawasulPersonIDTutor = !empty($_POST['tawasulPersonIDTutor']) ? $_POST['tawasulPersonIDTutor'] : null;
+    $tawasulPersonIDTutor2 = !empty($_POST['tawasulPersonIDTutor2']) ? $_POST['tawasulPersonIDTutor2'] : null;
+    $tawasulPersonIDTutor3 = !empty($_POST['tawasulPersonIDTutor3']) ? $_POST['tawasulPersonIDTutor3'] : null;
+    $tawasulPersonIDEA = !empty($_POST['tawasulPersonIDEA']) ? $_POST['tawasulPersonIDEA'] : null;
+    $tawasulPersonIDEA2 = !empty($_POST['tawasulPersonIDEA2']) ? $_POST['tawasulPersonIDEA2'] : null;
+    $tawasulPersonIDEA3 = !empty($_POST['tawasulPersonIDEA3']) ? $_POST['tawasulPersonIDEA3'] : null;
+    $tawasulSpaceID = !empty($_POST['tawasulSpaceID']) ? $_POST['tawasulSpaceID'] : null;
+    $tawasulFormGroupIDNext = !empty($_POST['tawasulFormGroupIDNext']) ? $_POST['tawasulFormGroupIDNext'] : null;
+    $website = $_POST['website'] ?? '';
+
+    $attendance = $_POST['attendance'] ?? NULL;
+
+    if ($tawasulSchoolYearID == '' or $name == '' or $nameShort == '') {
+        $URL .= '&return=error1';
+        header("Location: {$URL}");
+    } else {
+        //Check unique inputs for uniquness in current school year
+        try {
+            $data = array('name' => $name, 'nameShort' => $nameShort, 'tawasulSchoolYearID' => $tawasulSchoolYearID);
+            $sql = 'SELECT * FROM tawasulFormGroup WHERE (name=:name OR nameShort=:nameShort) AND tawasulSchoolYearID=:tawasulSchoolYearID';
+            $result = $connection2->prepare($sql);
+            $result->execute($data);
+        } catch (PDOException $e) {
+            $URL .= '&return=error2';
+            header("Location: {$URL}");
+            exit();
+        }
+
+        if ($result->rowCount() > 0) {
+            $URL .= '&return=error3';
+            header("Location: {$URL}");
+        } else {
+            //Write to database
+            try {
+                $data = array('tawasulSchoolYearID' => $tawasulSchoolYearID, 'name' => $name, 'nameShort' => $nameShort, 'tawasulPersonIDTutor' => $tawasulPersonIDTutor, 'tawasulPersonIDTutor2' => $tawasulPersonIDTutor2, 'tawasulPersonIDTutor3' => $tawasulPersonIDTutor3, 'tawasulPersonIDEA' => $tawasulPersonIDEA, 'tawasulPersonIDEA2' => $tawasulPersonIDEA2, 'tawasulPersonIDEA3' => $tawasulPersonIDEA3, 'tawasulSpaceID' => $tawasulSpaceID, 'tawasulFormGroupIDNext' => $tawasulFormGroupIDNext, 'attendance' => $attendance, 'website' => $website);
+                $sql = 'INSERT INTO tawasulFormGroup SET tawasulSchoolYearID=:tawasulSchoolYearID, name=:name, nameShort=:nameShort, tawasulPersonIDTutor=:tawasulPersonIDTutor, tawasulPersonIDTutor2=:tawasulPersonIDTutor2, tawasulPersonIDTutor3=:tawasulPersonIDTutor3, tawasulPersonIDEA=:tawasulPersonIDEA, tawasulPersonIDEA2=:tawasulPersonIDEA2, tawasulPersonIDEA3=:tawasulPersonIDEA3, tawasulSpaceID=:tawasulSpaceID, tawasulFormGroupIDNext=:tawasulFormGroupIDNext, attendance=:attendance, website=:website';
+                $result = $connection2->prepare($sql);
+                $result->execute($data);
+            } catch (PDOException $e) {
+                $URL .= '&return=error2';
+                header("Location: {$URL}");
+                exit();
+            }
+
+            //Last insert ID
+            $AI = str_pad($connection2->lastInsertID(), 5, '0', STR_PAD_LEFT);
+
+            $URL .= "&return=success0&editID=$AI";
+            header("Location: {$URL}");
+        }
+    }
+}

@@ -1,0 +1,66 @@
+details:
+    type: libraryItemEventLoan
+    name: Library Item Event Loan
+    table: tawasulLibraryItemEvent
+    modes: { update: true, insert: true, export: true }
+access:
+    module: Library
+    action: Manage Catalog
+fields:
+    id: 
+        name: "School ID"
+        desc: ""
+        args: { filter: string, required: true }
+    tawasulLibraryItemID: 
+        name: "ID"
+        desc: "tawasulLibraryItemID"
+        args: { filter: string, required: true, linked: id, readonly: [ tawasulLibraryItem ] } 
+        relationship: { table: tawasulLibraryItem, key: tawasulLibraryItemID, field: id }
+    tawasulPersonIDStatusResponsible:
+        name: "Responsible User"
+        desc: "Username or Email (if unique)"
+        args: { filter: nospaces, required: true }
+        relationship: { table: tawasulPerson, key: tawasulPersonID, field: studentID|username|email  }
+    returnExpected: 
+        name: "Return Date"
+        desc: "Expected Return Date"
+        args: { filter: date, custom: true }
+    tawasulPersonIDOut:
+        name: "Created By"
+        desc: "Username or Email (if unique)"
+        args: { filter: nospaces, required: true, custom: true }
+        relationship: { table: tawasulPerson, key: tawasulPersonID, field: studentID|username|email  }
+    timestampOut:
+        name: "Timestamp"
+        desc: ""
+        args: { filter: timestamp, hidden: true, function: timestamp }
+    type:
+        name: "Event Type"
+        desc: ""
+        value: "Loan"
+        args: { filter: string, hidden: true }
+    status:
+        name: "New Status"
+        desc: ""
+        value: "On Loan"
+        args: { filter: string, hidden: true }
+tables:
+    tawasulLibraryItem:
+        primaryKey:
+            tawasulLibraryItemID
+        uniqueKeys:
+            - [ id ]
+        fields:
+            - id
+            - status
+    tawasulLibraryItemEvent:
+        primaryKey:
+            tawasulLibraryItemEventID
+        fields:
+            - tawasulLibraryItemID
+            - tawasulPersonIDStatusResponsible
+            - tawasulPersonIDOut
+            - returnExpected
+            - timestampOut
+            - type
+            - status

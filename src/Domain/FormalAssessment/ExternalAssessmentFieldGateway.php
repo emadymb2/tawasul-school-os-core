@@ -1,0 +1,56 @@
+<?php
+/*
+Gibbon: the flexible, open school platform
+Founded by Ross Parker at ICHK Secondary. Built by Ross Parker, Sandra Kuipers and the Gibbon community (https://gibbonedu.org/about/)
+Copyright © 2010, Gibbon Foundation
+Gibbon™, Gibbon Education Ltd. (Hong Kong)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+namespace TawasulOS\Domain\FormalAssessment;
+
+use TawasulOS\Domain\Traits\TableAware;
+use TawasulOS\Domain\QueryCriteria;
+use TawasulOS\Domain\QueryableGateway;
+
+/**
+ * @version v28
+ * @since   v28
+ */
+class ExternalAssessmentFieldGateway extends QueryableGateway
+{
+    use TableAware;
+
+    private static $tableName = 'tawasulExternalAssessmentField';
+    private static $primaryKey = 'tawasulExternalAssessmentFieldID';
+
+    private static $searchableColumns = [];
+
+    public function selectFieldsByExternalAssessment($tawasulExternalAssessmentID)
+    {
+        $data = ['tawasulExternalAssessmentID' => $tawasulExternalAssessmentID];
+        $sql = 'SELECT category, tawasulExternalAssessmentField.*, tawasulScale.usage FROM tawasulExternalAssessmentField JOIN tawasulScale ON (tawasulExternalAssessmentField.tawasulScaleID=tawasulScale.tawasulScaleID) WHERE tawasulExternalAssessmentID=:tawasulExternalAssessmentID ORDER BY category, tawasulExternalAssessmentField.order';
+
+        return $this->db()->select($sql, $data);
+    }
+
+    public function selectFieldsByExternalAssessmentAndStudent($tawasulExternalAssessmentID, $tawasulExternalAssessmentStudentID)
+    {
+        $data= ['tawasulExternalAssessmentID' => $tawasulExternalAssessmentID, 'tawasulExternalAssessmentStudentID' => $tawasulExternalAssessmentStudentID];
+        $sql = 'SELECT category, tawasulExternalAssessmentStudentEntryID, tawasulExternalAssessmentField.*, tawasulScale.usage, tawasulExternalAssessmentStudentEntry.tawasulScaleGradeID FROM tawasulExternalAssessmentField JOIN tawasulScale ON (tawasulExternalAssessmentField.tawasulScaleID=tawasulScale.tawasulScaleID) LEFT JOIN tawasulExternalAssessmentStudentEntry ON (tawasulExternalAssessmentField.tawasulExternalAssessmentFieldID=tawasulExternalAssessmentStudentEntry.tawasulExternalAssessmentFieldID) WHERE tawasulExternalAssessmentID=:tawasulExternalAssessmentID AND tawasulExternalAssessmentStudentID=:tawasulExternalAssessmentStudentID ORDER BY category, tawasulExternalAssessmentField.order';
+
+        return $this->db()->select($sql, $data);
+    }
+}

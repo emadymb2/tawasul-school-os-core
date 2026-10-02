@@ -1,0 +1,33 @@
+details:
+    type: familyRelationship
+    name: Relationships
+    category: Family
+    table: tawasulFamilyRelationship
+    modes: { update: true, insert: true, export: true }
+access:
+    module: User Admin
+    action: Manage Families
+primaryKey:
+    tawasulFamilyRelationshipID
+uniqueKeys:
+    - [ tawasulFamilyID, tawasulPersonID1, tawasulPersonID2 ]
+table:
+    tawasulFamilyID: 
+        name: "Family Sync Key"
+        desc: "Unique ID for family, according to source system."
+        args: { filter: string, required: true }
+        relationship: { table: tawasulFamily, key: tawasulFamilyID, field: familySync  }
+    tawasulPersonID1: 
+        name: "Adult"
+        desc: "Username or Email (if unique)"
+        args: { filter: string, required: true }
+        relationship: { table: tawasulPerson, key: tawasulPersonID, field: username|email  }
+    tawasulPersonID2: 
+        name: "Child"
+        desc: "Username or Email (if unique)"
+        args: { filter: string, required: true }
+        relationship: { table: tawasulPerson, key: tawasulPersonID, field: username|email  }
+    relationship: 
+        name: "Relationship"
+        desc: ""
+        args: { filter: string, required: true, custom: true }

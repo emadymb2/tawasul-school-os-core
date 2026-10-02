@@ -1,0 +1,251 @@
+<?php
+/*
+Gibbon: the flexible, open school platform
+Founded by Ross Parker at ICHK Secondary. Built by Ross Parker, Sandra Kuipers and the Gibbon community (https://gibbonedu.org/about/)
+Copyright © 2010, Gibbon Foundation
+Gibbon™, Gibbon Education Ltd. (Hong Kong)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+use TawasulOS\Domain\Behaviour\BehaviourGateway;
+use TawasulOS\Domain\Planner\PlannerEntryGateway;
+use TawasulOS\Forms\Form;
+use TawasulOS\Services\Format;
+use TawasulOS\Forms\CustomFieldHandler;
+use TawasulOS\Forms\DatabaseFormFactory;
+use TawasulOS\Domain\System\SettingGateway;
+use TawasulOS\Domain\Timetable\CourseEnrolmentGateway;
+
+// Module includes
+require_once __DIR__ . '/moduleFunctions.php';
+
+$settingGateway = $container->get(SettingGateway::class);
+$enableDescriptors = $settingGateway->getSettingByScope('Behaviour', 'enableDescriptors');
+$enableLevels = $settingGateway->getSettingByScope('Behaviour', 'enableLevels');
+
+if (isActionAccessible($guid, $connection2, '/modules/TawasulBehaviour/behaviour_manage_add.php') == false) {
+    // Access denied
+    $page->addError(__('You do not have access to this action.'));
+} else {
+    // Get action with highest precendence
+    $highestAction = getHighestGroupedAction($guid, $_GET['q'], $connection2);
+    if ($highestAction == false) {
+        $page->addError(__('The highest grouped action cannot be determined.'));
+    } else {
+        $page->breadcrumbs
+            ->add(__('Manage Behaviour Records'), 'behaviour_manage.php')
+            ->add(__('Add'));
+
+        $tawasulBehaviourID = $_GET['tawasulBehaviourID'] ?? null;
+        $tawasulPersonID = $_GET['tawasulPersonID'] ?? '';
+        $tawasulFormGroupID = $_GET['tawasulFormGroupID'] ?? '';
+        $tawasulYearGroupID = $_GET['tawasulYearGroupID'] ?? '';
+        $type = $_GET['type'] ?? '';
+
+        $editLink = '';
+        $editID = '';
+        if (isset($_GET['editID'])) {
+            $editLink = $session->get('absoluteURL').'/index.php?q=/modules/TawasulBehaviour/behaviour_manage_edit.php&tawasulBehaviourID='.$_GET['editID'].'&tawasulPersonID='.$tawasulPersonID.'&tawasulFormGroupID='.$tawasulFormGroupID.'&tawasulYearGroupID='.$tawasulYearGroupID.'&type='.$type;
+            $editID = $_GET['editID'] ?? '';
+        }
+
+        $page->return->setEditLink($editLink);
+        $page->return->addReturns(['warning1' => __('Your request was successful, but some data was not properly saved.'), 'success1' => __('Your request was completed successfully. You can now add extra information below if you wish.')]);
+
+        $step = null;
+        if (isset($_GET['step'])) {
+            $step = $_GET['step'] ?? '';
+        }
+        if ($step != 1 and $step != 2) {
+            $step = 1;
+        }
+
+        // Step 1
+        if ($step == 1 or $tawasulBehaviourID == null) {
+            $form = Form::create('addform', $session->get('absoluteURL').'/modules/TawasulBehaviour/behaviour_manage_addProcess.php?step=1&tawasulPersonID='.$tawasulPersonID.'&tawasulFormGroupID='.$tawasulFormGroupID.'&tawasulYearGroupID='.$tawasulYearGroupID.'&type='.$type);
+            $form->setFactory(DatabaseFormFactory::create($pdo));
+            
+            $policyLink = $settingGateway->getSettingByScope('Behaviour', 'policyLink');
+            if (!empty($policyLink)) {
+                $form->addHeaderAction('viewPolicy', __('View Behaviour Policy'))
+                    ->setExternalURL($policyLink)
+                    ->setIcon('document')
+                    ->displayLabel();
+            }
+            if (!empty($tawasulPersonID) or !empty($tawasulFormGroupID) or !empty($tawasulYearGroupID) or !empty($type)) {
+                $form->addHeaderAction('back', __('Back to Search Results'))
+                    ->setURL('/modules/TawasulBehaviour/behaviour_manage.php')
+                    ->setIcon('search')
+                    ->displayLabel()
+                    ->addParam('tawasulPersonID', $tawasulPersonID)
+                    ->addParam('tawasulFormGroupID', $tawasulFormGroupID)
+                    ->addParam('tawasulYearGroupID', $tawasulYearGroupID)
+                    ->addParam('type', $type);
+            }
+            
+            $form->addHiddenValue('address', "/modules/TawasulBehaviour/behaviour_manage_add.php");
+            $form->addRow()->addHeading('Step 1', __('Step 1'));
+
+            // Student
+            $row = $form->addRow();
+            	$row->addLabel('tawasulPersonID', __('Student'));
+                $row->addSelectStudent('tawasulPersonID', $session->get('tawasulSchoolYearID'))->placeholder()->selected($tawasulPersonID)->required();
+
+            // Date
+            $row = $form->addRow();
+            	$row->addLabel('date', __('Date'));
+            	$row->addDate('date')->setValue(date($session->get('i18n')['dateFormatPHP']))->required();
+
+            // Type
+            $row = $form->addRow();
+            	$row->addLabel('type', __('Type'));
+	            $row->addSelectBehaviourType('type')->selected($type)->required();
+
+            // Descriptor
+            if ($enableDescriptors == 'Y') {
+                $negativeDescriptors = $settingGateway->getSettingByScope('Behaviour', 'negativeDescriptors');
+                $negativeDescriptors = (!empty($negativeDescriptors))? explode(',', $negativeDescriptors) : [];
+                $positiveDescriptors = $settingGateway->getSettingByScope('Behaviour', 'positiveDescriptors');
+                $positiveDescriptors = (!empty($positiveDescriptors))? explode(',', $positiveDescriptors) : [];
+                $observationDescriptors = $settingGateway->getSettingByScope('Behaviour', 'observationDescriptors');
+                $observationDescriptors = (!empty($observationDescriptors))? explode(',', $observationDescriptors) : [];
+
+                $chainedToNegative = array_combine($negativeDescriptors, array_fill(0, count($negativeDescriptors), 'Negative'));
+                $chainedToPositive = array_combine($positiveDescriptors, array_fill(0, count($positiveDescriptors), 'Positive'));
+                $chainedToObservation = array_combine($observationDescriptors, array_fill(0, count($observationDescriptors), 'Observation'));
+                $chainedTo = array_merge($chainedToNegative, $chainedToPositive, $chainedToObservation);
+
+                $row = $form->addRow();
+            		$row->addLabel('descriptor', __('Descriptor'));
+                    $row->addSelect('descriptor')
+                        ->fromArray($positiveDescriptors)
+                        ->fromArray($negativeDescriptors)
+                        ->fromArray($observationDescriptors)
+                        ->chainedTo('type', $chainedTo)
+                        ->required()
+                        ->placeholder();
+            }
+
+            // Level
+            if ($enableLevels == 'Y') {
+                $optionsLevels = $settingGateway->getSettingByScope('Behaviour', 'levels');
+                if ($optionsLevels != '') {
+                    $optionsLevels = explode(',', $optionsLevels);
+                }
+                $row = $form->addRow();
+                	$row->addLabel('level', __('Level'));
+                	$row->addSelect('level')->fromArray($optionsLevels)->placeholder();
+            }
+
+            $form->addRow()->addHeading('Details', __('Details'));
+
+			// Incident
+            $row = $form->addRow();
+                $column = $row->addColumn();
+                $column->addLabel('comment', __('Incident'));
+            	$column->addTextArea('comment')->setRows(5)->setClass('w-full');
+
+            // Follow Up
+            $row = $form->addRow();
+            	$column = $row->addColumn();
+            	$column->addLabel('followup', __('Follow Up'));
+            	$column->addTextArea('followUp')->setRows(5)->setClass('w-full');
+
+            // CUSTOM FIELDS
+            $container->get(CustomFieldHandler::class)->addCustomFieldsToForm($form, 'Behaviour', []);
+
+            // Copy to Notes
+            $row = $form->addRow();
+                $row->addLabel('copyToNotes', __('Copy To Notes'));
+                $row->addCheckbox('copyToNotes');
+
+            $row = $form->addRow();
+            	$row->addFooter();
+            	$row->addSubmit();
+
+            echo $form->getOutput();
+
+        } elseif ($step == 2 and $tawasulBehaviourID != null) {
+            if ($tawasulBehaviourID == '') {
+                $page->addError(__('You have not specified one or more required parameters.'));
+            } else {
+                // Check for existence of behaviour record
+                $values = $container->get(BehaviourGateway::class)->getBehaviourRecordByID($tawasulBehaviourID);
+
+                if (empty($values)) {
+                    $page->addError(__('The specified record cannot be found.'));
+                } else {
+                    $form = Form::create('addform', $session->get('absoluteURL').'/modules/TawasulBehaviour/behaviour_manage_addProcess.php?step=2&tawasulPersonID='.$tawasulPersonID.'&tawasulFormGroupID='.$tawasulFormGroupID.'&tawasulYearGroupID='.$tawasulYearGroupID.'&type='.$type);
+                    $form->setFactory(DatabaseFormFactory::create($pdo));
+                    $form->addHiddenValue('address', "/modules/TawasulBehaviour/behaviour_manage_add.php");
+                    $form->addHiddenValue('tawasulBehaviourID', $tawasulBehaviourID);
+                    $form->addRow()->addHeading(__('Step 2 (Optional)'));
+
+                    // Student
+                    $row = $form->addRow();
+                    	$row->addLabel('students', __('Student'));
+                    	$row->addTextField('students')->setValue(Format::name('', $values['preferredName'], $values['surname'], 'Student'))->readonly();
+                        $form->addHiddenValue('tawasulPersonID', $values['tawasulPersonID']);
+
+                    // Lessons
+                    $lessons = [];
+
+                    $resultSelect = $container->get(PlannerEntryGateway::class)->selectPlannerLessonsByStudent($session->get('tawasulSchoolYearID'), $values['tawasulPersonID']);
+
+                    while ($rowSelect = $resultSelect->fetch()) {
+                        $show = true;
+                        if ($highestAction == 'Manage Behaviour Records_my') {
+                            
+                                $resultShow = $container->get(CourseEnrolmentGateway::class)->selectBy(['tawasulPersonID' => $session->get('tawasulPersonID'), 'tawasulCourseClassID' => $rowSelect['tawasulCourseClassID'], 'role' => 'Teacher']);
+                             
+                            if ($resultShow->rowCount() != 1) {
+                                $show = false;
+                            }
+                        }
+                        if ($show == true) {
+                            $submission = '';
+                            if ($rowSelect['homework'] == 'Y') {
+                                $submission = 'HW';
+                                if ($rowSelect['homeworkSubmission'] == 'Y') {
+                                    $submission .= '+OS';
+                                }
+                            }
+                            if ($submission != '') {
+                                $submission = ' - '.$submission;
+                            }
+                            $lessons[$rowSelect['tawasulPlannerEntryID']] = htmlPrep($rowSelect['course']).'.'.htmlPrep($rowSelect['class']).' '.htmlPrep($rowSelect['lesson']).' - '.substr(Format::date($rowSelect['date']), 0, 5).$submission;
+                        }
+                    }
+
+                    $row = $form->addRow();
+                        $row->addLabel('tawasulPlannerEntryID', __('Link To Lesson?'))->description(__('From last 30 days'));
+                        if (count($lessons) < 1) {
+                            $row->addSelect('tawasulPlannerEntryID')->placeholder();
+                        }
+                        else {
+                            $row->addSelect('tawasulPlannerEntryID')->fromArray($lessons)->placeholder();
+                        }
+
+                    $row = $form->addRow();
+                    	$row->addFooter();
+                    	$row->addSubmit();
+
+                    echo $form->getOutput();
+                }
+            }
+        }
+    }
+}
+?>

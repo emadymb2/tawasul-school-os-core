@@ -1,0 +1,46 @@
+/* Tawasul OS Branches */
+.tos-branch-bar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; padding: 12px 16px; border-radius: 20px; background: var(--tos-mint, #d4ece3); border: 1px solid var(--tos-line, #e3dfd3); }
+.tos-branch-bar label { font-weight: 700; margin-inline-end: 4px; }
+.tos-branch-bar select { padding: 8px 12px; border-radius: 12px; border: 1px solid var(--tos-forest-soft, #28583d); background: #fff; font: inherit; min-width: 220px; }
+.tos-branch-current { font-weight: 800; color: var(--tos-forest, #123d28); }
+
+.tos-table { width: 100%; border-collapse: collapse; margin-top: 14px; }
+.tos-table caption { text-align: start; font-weight: 800; padding-bottom: 8px; color: var(--tos-forest, #123d28); }
+.tos-table th, .tos-table td { padding: 10px 12px; border-bottom: 1px solid var(--tos-line, #e3dfd3); text-align: start; }
+.tos-table th { background: var(--tos-paper, #fffefa); font-weight: 700; }
+.tos-table tbody tr:hover { background: var(--tos-mint, #d4ece3); }
+.tos-table .tos-num { text-align: end; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tos-code { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; background: var(--tos-sage, #dbe8c8); padding: 2px 8px; border-radius: 10px; font-weight: 700; }
+.tos-bilingual { display: grid; gap: 2px; }
+.tos-bilingual span:first-child { font-weight: 700; }
+.tos-inactive { opacity: .6; }
+
+.tos-pill { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 12px; font-weight: 700; }
+.tos-pill-active { background: var(--tos-sage, #dbe8c8); color: var(--tos-forest, #123d28); }
+.tos-pill-inactive { background: #eceaea; color: #555; }
+.tos-pill-on { background: var(--tos-forest, #123d28); color: #fff; }
+.tos-pill-off { background: var(--tos-line, #e3dfd3); color: #555; }
+
+.tos-notice { margin-top: 14px; padding: 12px 16px; border-radius: 16px; border-inline-start: 6px solid var(--tos-gold, #e4b254); background: var(--tos-paper, #fffefa); }
+.tos-notice strong { color: var(--tos-forest, #123d28); }
+
+.tos-assign { display: grid; gap: 16px; margin-top: 14px; }
+.tos-assign-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: end; }
+.tos-assign-head label { display: grid; gap: 4px; font-weight: 700; }
+.tos-assign-head input, .tos-assign-head select { padding: 8px 12px; border-radius: 12px; border: 1px solid var(--tos-line, #e3dfd3); font: inherit; background: #fff; }
+.tos-assign-list { max-height: 60vh; overflow: auto; border: 1px solid var(--tos-line, #e3dfd3); border-radius: 20px; }
+.tos-assign-row { display: grid; grid-template-columns: 1fr 220px; gap: 12px; align-items: center; padding: 8px 14px; border-bottom: 1px solid var(--tos-line, #e3dfd3); }
+.tos-assign-row:last-child { border-bottom: 0; }
+.tos-assign-row:hover { background: var(--tos-mint, #d4ece3); }
+.tos-assign-row label { display: flex; gap: 10px; align-items: center; cursor: pointer; }
+.tos-assign-row select { padding: 6px 10px; border-radius: 10px; border: 1px solid var(--tos-line, #e3dfd3); font: inherit; background: #fff; width: 100%; }
+.tos-assign-sub { display: block; font-size: 12px; color: var(--tos-muted, #6e7e72); }
+
+.tos-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.tos-actions a, .tos-actions button { padding: 6px 14px; border-radius: 16px; border: 1px solid var(--tos-forest, #123d28); background: var(--tos-forest, #123d28); color: #fff; font: inherit; font-weight: 700; text-decoration: none; cursor: pointer; }
+.tos-actions .tos-secondary { background: var(--tos-paper, #fffefa); color: var(--tos-forest, #123d28); }
+.tos-actions a:focus-visible, .tos-actions button:focus-visible, .tos-branch-bar select:focus-visible, .tos-assign-row select:focus-visible { outline: 3px solid var(--tos-focus, #e4b254); outline-offset: 2px; }
+
+.tos-counts { font-variant-numeric: tabular-nums; color: var(--tos-forest-soft, #28583d); font-weight: 700; }.tos-roles { display: flex; flex-wrap: wrap; gap: 10px 18px; padding: 8px 0; }
+.tos-role { display: inline-flex; gap: 8px; align-items: center; cursor: pointer; font-weight: 600; }
+.tos-role input { width: 18px; height: 18px; accent-color: var(--tos-forest, #123d28); }

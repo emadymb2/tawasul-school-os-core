@@ -1,0 +1,164 @@
+<?php
+/*
+Gibbon: the flexible, open school platform
+Founded by Ross Parker at ICHK Secondary. Built by Ross Parker, Sandra Kuipers and the Gibbon community (https://gibbonedu.org/about/)
+Copyright © 2010, Gibbon Foundation
+Gibbon™, Gibbon Education Ltd. (Hong Kong)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+use TawasulOS\Services\Format;
+use TawasulOS\Comms\NotificationEvent;
+use TawasulOS\Forms\CustomFieldHandler;
+use TawasulOS\Domain\Staff\StaffGateway;
+use TawasulOS\Domain\DataUpdater\StaffUpdateGateway;
+use TawasulOS\Data\Validator;
+
+require_once __DIR__ . '/../../tawasul.php';
+
+$_POST = $container->get(Validator::class)->sanitize($_POST);
+
+$tawasulStaffID = $_GET['tawasulStaffID'] ?? '';
+$tawasulPersonID = $_POST['tawasulPersonID'] ?? '';
+$address = $_POST['address'] ?? '';
+$URL = $session->get('absoluteURL').'/index.php?q=/modules/'.getModuleName($address)."/data_staff.php&tawasulStaffID=$tawasulStaffID&tawasulPersonID=$tawasulPersonID";
+
+if (isActionAccessible($guid, $connection2, '/modules/TawasulDataUpdater/data_staff.php') == false) {
+    $URL .= '&return=error0';
+    header("Location: {$URL}");
+} else {
+    // Proceed!
+    $staffGateway = $container->get(StaffGateway::class);
+    $staffUpdateGateway = $container->get(StaffUpdateGateway::class);
+
+    // Check required values
+    if (empty($tawasulStaffID)) {
+        $URL .= '&return=error1';
+        header("Location: {$URL}");
+        return;
+    }
+
+    // Get action with highest precedence
+    $highestAction = getHighestGroupedAction($guid, $_POST['address'], $connection2);
+    if ($highestAction == false) {
+        $URL .= "&return=error0";
+        header("Location: {$URL}");
+        return;
+    }
+
+    // Check database records exist
+    $values = $staffGateway->getByID($tawasulStaffID);
+    if (empty($values)) {
+        $URL .= '&return=error2';
+        header("Location: {$URL}");
+        return;
+    }
+
+    // Check access to staff record
+    if ($highestAction == 'Update Staff Data_my' && $values['tawasulPersonID'] != $session->get('tawasulPersonID')) {
+        $URL .= '&return=error0';
+        header("Location: {$URL}");
+        return;
+    }
+
+    // Proceed!
+    $data = [
+        'tawasulStaffID'         => $tawasulStaffID,
+        'initials'              => $_POST['initials'] ?? '',
+        'type'                  => $_POST['type'] ?? '',
+        'jobTitle'              => $_POST['jobTitle'] ?? '',
+        'firstAidQualified'     => $_POST['firstAidQualified'] ?? '',
+        'firstAidQualification' => $_POST['firstAidQualification'] ?? '',
+        'firstAidExpiry'        => !empty($_POST['firstAidExpiry']) ? Format::dateConvert($_POST['firstAidExpiry']) : null,
+        'countryOfOrigin'       => $_POST['countryOfOrigin'] ?? '',
+        'qualifications'        => $_POST['qualifications'] ?? '',
+        'biography'             => $_POST['biography'] ?? '',
+    ];
+
+    // COMPARE VALUES: Has the data changed?
+    $dataChanged = false;
+    foreach ($values as $key => $value) {
+        if (!isset($data[$key])) continue; // Skip fields we don't plan to update
+        if (empty($data[$key]) && empty($value)) continue; // Nulls, false and empty strings should cause no change
+
+        if ($data[$key] != $value) {
+            $dataChanged = true;
+        }
+    }
+
+    // CUSTOM FIELDS
+    $customRequireFail = false;
+    $fields = $container->get(CustomFieldHandler::class)->getFieldDataFromPOST('Staff', ['dataUpdater' => true], $customRequireFail);
+
+    // Check for data changed
+    $existingFields = json_decode($values['fields'], true);
+    $newFields = json_decode($fields, true);
+    foreach ($newFields as $key => $fieldValue) {
+        if ($existingFields[$key] != $fieldValue) {
+            $dataChanged = true;
+        }
+    }
+
+    // Auto-accept updates where no data had changed
+    $data['status'] = $dataChanged ? 'Pending' : 'Complete';
+    $data['fields'] = $fields ?? '';
+
+    // Write to database
+    $tawasulStaffUpdateID = $_POST['existing'] ?? 'N';
+    $data['tawasulSchoolYearID'] = $session->get('tawasulSchoolYearID');
+    $data['tawasulPersonIDUpdater'] = $session->get('tawasulPersonID');
+    $data['timestamp'] = date('Y-m-d H:i:s');
+
+    // Fetch old record for file comparison if updating
+    $oldStaffUpdateRecord = null;
+    if ($tawasulStaffUpdateID != 'N') {
+        $oldStaffUpdateRecord = $staffUpdateGateway->getByID($tawasulStaffUpdateID);
+    }
+
+    if ($tawasulStaffUpdateID != 'N') {
+        $success = $staffUpdateGateway->update($tawasulStaffUpdateID, $data);
+    } else {
+        $success = $staffUpdateGateway->insert($data);
+        $tawasulStaffUpdateID = str_pad($connection2->lastInsertID(), 8, '0', STR_PAD_LEFT);
+    }
+
+    if (!$success || !$pdo->getQuerySuccess()) {
+        echo $pdo->getErrorMessage();
+        die();
+    }
+
+    // Manage custom field file uploads
+    if (!empty($fields)) {
+        $container->get(CustomFieldHandler::class)->manageCustomFieldFileUploads('Staff', ['dataUpdater' => true], $fields, 'tawasulStaffUpdate', $tawasulStaffUpdateID, $oldStaffUpdateRecord['fields'] ?? null);
+    }
+
+    if ($dataChanged) {
+        // Raise a new notification event
+        $event = new NotificationEvent('Data Updater', 'Staff Data Updates');
+
+        $event->addRecipient($session->get('organisationDBA'));
+        $event->setNotificationText(__('A staff data update request has been submitted.'));
+        $event->setActionLink('/index.php?q=/modules/TawasulDataUpdater/data_staff_manage.php');
+
+        $event->sendNotifications($pdo, $session);
+    }
+
+    $URLSuccess = $highestAction == 'Update Staff Data_any'
+        ? $session->get('absoluteURL')."/index.php?q=/modules/TawasulDataUpdater/data_staff.php&tawasulStaffID=$tawasulStaffID&tawasulPersonID=$tawasulPersonID"
+        : $session->get('absoluteURL')."/index.php?q=/modules/TawasulDataUpdater/data_updates.php&tawasulStaffID=$tawasulStaffID&tawasulPersonID=$tawasulPersonID";
+
+    $URLSuccess .= '&return=success0';
+    header("Location: {$URLSuccess}");
+}

@@ -1,0 +1,1548 @@
+# TawasulOS REST API — developer reference
+
+**Base URL:** `https://your-tawasulos.example/modules/TawasulCore/api.php/v2`
+**Version:** 3.4.01
+**Spec file:** `openapi.json` (OpenAPI 3.0, ready for Postman/Swagger UI)
+
+## Table of contents
+
+1. [Authentication](#authentication)
+2. [Rate limits](#rate-limits)
+3. [Error format](#error-format)
+4. [Reading collections](#reading-collections)
+5. [Writing data](#writing-data)
+6. [Bulk operations](#bulk-operations)
+7. [Exports](#exports)
+8. [Search and aggregation](#search-and-aggregation)
+9. [Relation traversal](#relation-traversal)
+10. [File transfers](#file-transfers)
+11. [Composite endpoints](#composite-endpoints)
+12. [Webhooks](#webhooks)
+13. [Batch requests](#batch-requests)
+14. [Resource index](#resource-index)
+15. [Scopes](#scopes)
+16. [Meta endpoints](#meta-endpoints)
+
+---
+
+## Authentication
+
+Two credential types are accepted, sent in the `Authorization` header as
+a bearer token.
+
+| Type | Prefix | Lifetime | Notes |
+|------|--------|----------|-------|
+| API key | `tws_` | Permanent | Long-lived, tied to a person/role, per-minute limit, IP allow-list |
+| User token | `tok_` | Minutes | Short-lived, from `/auth/login`, refreshable via `/auth/refresh` |
+
+### Login (password grant)
+
+```http
+POST /auth/login
+Content-Type: application/json
+
+{"username":"teacher","password":"secret","scopes":"students.read,attendance.write"}
+```
+
+Returns a token pair and the linked person:
+
+```json
+{
+  "data": {
+    "token": "tok_...",
+    "refreshToken": "ref_...",
+    "expiresIn": 120,
+    "user": { "person_id": "123", "username": "teacher", "surname": "Smith" }
+  }
+}
+```
+
+### Refresh a token
+
+```http
+POST /auth/refresh
+Content-Type: application/json
+
+{"refreshToken":"ref_..."}
+```
+
+### Identify the current credential
+
+```http
+GET /auth/me
+Authorization: Bearer tok_...
+```
+
+Shows the credential type, granted scopes, linked person and roles.
+
+### Logout
+
+```http
+POST /auth/logout
+Authorization: Bearer tok_...
+```
+
+Revokes the current user token (API keys must be revoked in the TawasulOS UI).
+
+---
+
+## Rate limits
+
+| Credential | Source | Default limit | Window |
+|------------|--------|---------------|--------|
+| API key | key's `rateLimit` setting | configurable | 1 minute |
+| User token | `tokenRateLimit` setting | 240 | 1 minute |
+| Login attempts | `tokenRateLimit` setting | configurable | 1 minute |
+
+Every response carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` and
+`X-RateLimit-Reset` (Unix timestamp). Exceeding the limit returns 429.
+Repeated failed logins from one IP are temporarily locked out.
+
+---
+
+## Error format
+
+All errors use the same JSON shape and carry an `X-Request-Id`:
+
+```json
+{
+  "error": { "code": "forbidden", "message": "This credential does not hold the \"x.write\" scope.", "details": { ... } },
+  "meta": { "requestID": "req_a1b2c3d4e5f6a7b8" }
+}
+```
+
+| Status | Code | Meaning |
+|--------|------|---------|
+| 400 | bad_request | Invalid JSON or missing required parameter |
+| 401 | unauthorized | No credential, or it was not recognised |
+| 403 | forbidden | Scope missing, IP blocked, or no role permission |
+| 404 | not_found | Resource or record does not exist |
+| 405 | method_not_allowed | The HTTP method is not supported on this path |
+| 409 | conflict | A record with that unique value already exists |
+| 422 | validation_failed | Input failed validation rules |
+| 429 | rate_limited | Too many requests in the current window |
+| 503 | unavailable | The API or database is not reachable |
+
+---
+
+## Reading collections
+
+```http
+GET /students?page=1&pageSize=25&sort=-surname&search=John&fields=person_id,preferredName,surname
+Authorization: Bearer tws_...
+```
+
+### Query parameters (all collections)
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `page` | integer | Page number, starting at 1. Defaults to 1. |
+| `pageSize` | integer | Records per page (max configurable). Defaults to 25. |
+| `sort` | string | Sort field. Prefix with `-` for descending. |
+| `search` | string | Free-text search across the searchable fields. |
+| `fields` | string | Comma-separated list of fields to return. |
+| `school_year_id` | integer | Restrict to one school year. |
+
+Each resource also accepts its own `filters` (see the resource table below).
+Numeric and date filters accept `<filter>From` and `<filter>To` suffixes.
+
+### Single record
+
+```http
+GET /students/GS001234
+Authorization: Bearer tws_...
+```
+
+---
+
+## Writing data
+
+Create, update and delete all require the `<resource>.write` scope **and** the
+linked TawasulOS user's role to hold the matching module action (when role
+permissions are enforced). POST returns 201; PATCH/PUT/DELETE return 200.
+
+### Create (POST)
+
+```http
+POST /attendance
+Authorization: Bearer tok_...
+Content-Type: application/json
+
+{"course_class_id":"12345","person_id":"GS001234","date":"2026-09-18","status":"Present"}
+```
+
+### Partial update (PATCH)
+
+```http
+PATCH /attendance/ATT001
+Authorization: Bearer tok_...
+Content-Type: application/json
+
+{"status":"Late"}
+```
+
+### Full replace (PUT)
+
+```http
+PUT /attendance/ATT001
+Authorization: Bearer tok_...
+Content-Type: application/json
+
+{"course_class_id":"12345","person_id":"GS001234","date":"2026-09-18","status":"Present"}
+```
+
+PUT replaces the entire record — omit a required field and you get 422.
+
+### Delete (DELETE)
+
+```http
+DELETE /attendance/ATT001
+Authorization: Bearer tok_...
+```
+
+---
+
+## Bulk operations
+
+Create, update or delete up to 500 records in one transaction. Every item
+must succeed or the whole request is rolled back.
+
+```http
+POST /attendance/bulk
+Authorization: Bearer tok_...
+Content-Type: application/json
+
+{
+  "items": [
+    {"course_class_id":"12345","person_id":"GS001234","date":"2026-09-18","status":"Present"}
+  ]
+}
+```
+
+Each item is either a new object, an object with the primary key to update,
+or `{"op":"delete","id":"ATT001"}` to remove a record.
+
+---
+
+## Exports
+
+Download an entire resource as CSV — no pagination, one row per record.
+
+```http
+GET /students/export
+Authorization: Bearer tws_...
+Accept: text/csv
+```
+
+---
+
+## Search and aggregation
+
+### Free-text search
+`GET /students?search=Smith` — searches the resource's `search` columns.
+
+### Distinct values
+`GET /students/distinct?field=year_group_id` — unique non-null values for a column.
+
+### Aggregate summary
+`GET /attendance/aggregate?by=status` — counts grouped by one or more fields.
+
+---
+
+## Relation traversal
+
+Follow a foreign-key link from one record to its related record or list:
+
+```http
+GET /students/GS001234/attendance
+Authorization: Bearer tws_...
+```
+
+The relation name appears in each resource's OpenAPI spec under the path
+`/{resource}/{id}/{relation}`.
+
+---
+
+## File transfers
+
+File transfer is off by default. An administrator enables it in the TawasulCore
+settings. Once enabled:
+
+```http
+GET  /files/{resource}/{id}           # list file fields on a record
+GET  /files/{resource}/{id}/{field}  # download (add ?disposition=inline to view)
+POST /files/{resource}/{id}/{field}  # attach or replace (multipart or base64 JSON)
+DELETE /files/{resource}/{id}/{field}# detach and delete the file
+```
+
+Uploads are rejected if the extension is in the forbidden list (`.php`, `.html`,
+etc.) or if the file exceeds the configured maximum size (413).
+
+---
+
+## Composite endpoints
+
+Convenience endpoints that join data across multiple resources in a single call.
+Each part is included only when the caller holds the read scope for it.
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /students/{id}/profile` | Student, family, enrolment, timetable, attendance summary, recent behaviour |
+| `GET /staff/{id}/profile` | Staff member, contract, roles, departments, taught classes, absences |
+| `GET /families/{id}/profile` | Family, adults with contact details, children |
+| `GET /courses/{id}/overview` | Course, its classes, and enrolment count per class |
+| `GET /students/{id}/finance` | Invoices, fees and payments with outstanding totals |
+| `GET /students/{id}/timetable` | Timetabled periods for one person, by day |
+| `GET /classes/{id}/roster` | Students and teachers attached to one class |
+
+---
+
+## Webhooks
+
+When enabled, every create/update/delete is POSTed to subscribed URLs as
+a `{resource}.created`, `{resource}.updated`, `{resource}.replaced` or
+`{resource}.deleted` event. Each delivery carries an `X-TawasulOS-Signature`
+header: `sha256=` HMAC-SHA256 of the raw body using the subscription secret.
+
+### Subscribe
+
+```http
+POST /webhooks
+Authorization: Bearer tok_...
+Content-Type: application/json
+
+{"name":"Attendance changes","url":"https://hooks.example.com/gibbon","events":"attendance.created,attendance.updated"}
+```
+
+---
+
+## Batch requests
+
+Send multiple API calls in one HTTP request to reduce round-trips:
+
+```http
+POST /batch
+Authorization: Bearer tok_...
+Content-Type: application/json
+
+{"requests":[{"method":"GET","path":"/students?pageSize=1"},{"method":"GET","path":"/classes/A24"}]}
+```
+
+Returns an array of per-request responses, each with its own status code.
+
+---
+
+## Resource index
+
+Resources are grouped by area. Each supports `GET` (collection and single),
+and most support `POST`, `PATCH`, `PUT`, `DELETE`. Read the full OpenAPI spec
+at `GET /openapi.json` for field types, filters and exact parameters.
+
+
+### Academics
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `class-enrolments` | Class Enrolments | GET,POST,PATCH,PUT,DELETE | `enrolments.read` | `enrolments.write` |
+| `classes` | Classes | GET,POST,PATCH,PUT,DELETE | `classes.read` | `classes.write` |
+| `course-class-maps` | Course class maps | GET,POST,PATCH,PUT,DELETE | `course-class-maps.read` | `course-class-maps.write` |
+| `courses` | Courses | GET,POST,PATCH,PUT,DELETE | `courses.read` | `courses.write` |
+| `crowd-assess-discusses` | Crowd assess discusses | GET,POST,PATCH,PUT,DELETE | `crowd-assess-discusses.read` | `crowd-assess-discusses.write` |
+| `external-assessment-fields` | External assessment fields | GET,POST,PATCH,PUT,DELETE | `external-assessment-fields.read` | `external-assessment-fields.write` |
+| `external-assessment-student-entries` | External assessment student entries | GET,POST,PATCH,PUT,DELETE | `external-assessment-student-entries.read` | `external-assessment-student-entries.write` |
+| `external-assessment-students` | External assessment students | GET,POST,PATCH,PUT,DELETE | `external-assessment-students.read` | `external-assessment-students.write` |
+| `external-assessments` | External assessments | GET,POST,PATCH,PUT,DELETE | `external-assessments.read` | `external-assessments.write` |
+| `internal-assessment-columns` | Internal assessment columns | GET,POST,PATCH,PUT,DELETE | `internal-assessment-columns.read` | `internal-assessment-columns.write` |
+| `internal-assessment-entries` | Internal assessment entries | GET,POST,PATCH,PUT,DELETE | `internal-assessment-entries.read` | `internal-assessment-entries.write` |
+| `lessons` | Lessons | GET,POST,PATCH,PUT,DELETE | `planner.read` | `planner.write` |
+| `markbook-columns` | Markbook Columns | GET,POST,PATCH,PUT,DELETE | `markbook.read` | `markbook.write` |
+| `markbook-entries` | Markbook Entries | GET,POST,PATCH,PUT,DELETE | `markbook.read` | `markbook.write` |
+| `markbook-targets` | Markbook targets | GET,POST,PATCH,PUT,DELETE | `markbook-targets.read` | `markbook-targets.write` |
+| `markbook-weights` | Markbook weights | GET,POST,PATCH,PUT,DELETE | `markbook-weights.read` | `markbook-weights.write` |
+| `planner-entry-discusses` | Planner entry discusses | GET,POST,PATCH,PUT,DELETE | `planner-entry-discusses.read` | `planner-entry-discusses.write` |
+| `planner-entry-guests` | Planner entry guests | GET,POST,PATCH,PUT,DELETE | `planner-entry-guests.read` | `planner-entry-guests.write` |
+| `planner-entry-homeworks` | Planner entry homeworks | GET,POST,PATCH,PUT,DELETE | `planner-entry-homeworks.read` | `planner-entry-homeworks.write` |
+| `planner-entry-outcomes` | Planner entry outcomes | GET,POST,PATCH,PUT,DELETE | `planner-entry-outcomes.read` | `planner-entry-outcomes.write` |
+| `planner-entry-student-homeworks` | Planner entry student homeworks | GET,POST,PATCH,PUT,DELETE | `planner-entry-student-homeworks.read` | `planner-entry-student-homeworks.write` |
+| `planner-entry-student-trackers` | Planner entry student trackers | GET,POST,PATCH,PUT,DELETE | `planner-entry-student-trackers.read` | `planner-entry-student-trackers.write` |
+| `planner-parent-weekly-email-summaries` | Planner parent weekly email summaries | GET,POST,PATCH,PUT,DELETE | `planner-parent-weekly-email-summaries.read` | `planner-parent-weekly-email-summaries.write` |
+| `report-archive-entries` | Report archive entries | GET,POST,PATCH,PUT,DELETE | `report-archive-entries.read` | `report-archive-entries.write` |
+| `report-archives` | Report archives | GET,POST,PATCH,PUT,DELETE | `report-archives.read` | `report-archives.write` |
+| `report-prototype-sections` | Report prototype sections | GET,POST,PATCH,PUT,DELETE | `report-prototype-sections.read` | `report-prototype-sections.write` |
+| `report-template-fonts` | Report template fonts | GET,POST,PATCH,PUT,DELETE | `report-template-fonts.read` | `report-template-fonts.write` |
+| `report-template-sections` | Report template sections | GET,POST,PATCH,PUT,DELETE | `report-template-sections.read` | `report-template-sections.write` |
+| `report-templates` | Report templates | GET,POST,PATCH,PUT,DELETE | `report-templates.read` | `report-templates.write` |
+| `reporting-accesses` | Reporting accesses | GET,POST,PATCH,PUT,DELETE | `reporting-accesses.read` | `reporting-accesses.write` |
+| `reporting-criteria-types` | Reporting criteria types | GET,POST,PATCH,PUT,DELETE | `reporting-criteria-types.read` | `reporting-criteria-types.write` |
+| `reporting-criterias` | Reporting criterias | GET,POST,PATCH,PUT,DELETE | `reporting-criterias.read` | `reporting-criterias.write` |
+| `reporting-cycles` | Reporting cycles | GET,POST,PATCH,PUT,DELETE | `reporting-cycles.read` | `reporting-cycles.write` |
+| `reporting-progresses` | Reporting progresses | GET,POST,PATCH,PUT,DELETE | `reporting-progresses.read` | `reporting-progresses.write` |
+| `reporting-proofs` | Reporting proofs | GET,POST,PATCH,PUT,DELETE | `reporting-proofs.read` | `reporting-proofs.write` |
+| `reporting-scopes` | Reporting scopes | GET,POST,PATCH,PUT,DELETE | `reporting-scopes.read` | `reporting-scopes.write` |
+| `reporting-values` | Reporting values | GET,POST,PATCH,PUT,DELETE | `reporting-values.read` | `reporting-values.write` |
+| `reports` | Reports | GET,POST,PATCH,PUT,DELETE | `reports.read` | `reports.write` |
+| `rubric-cells` | Rubric cells | GET,POST,PATCH,PUT,DELETE | `rubric-cells.read` | `rubric-cells.write` |
+| `rubric-columns` | Rubric columns | GET,POST,PATCH,PUT,DELETE | `rubric-columns.read` | `rubric-columns.write` |
+| `rubric-entries` | Rubric entries | GET,POST,PATCH,PUT,DELETE | `rubric-entries.read` | `rubric-entries.write` |
+| `rubric-rows` | Rubric rows | GET,POST,PATCH,PUT,DELETE | `rubric-rows.read` | `rubric-rows.write` |
+| `timetable-dates` | Timetable Dates | GET,POST,PATCH,PUT,DELETE | `timetable.read` | `timetable.write` |
+| `timetable-days` | Timetable Days | GET,POST,PATCH,PUT,DELETE | `timetable.read` | `timetable.write` |
+| `timetable-periods` | Timetable Periods | GET,POST,PATCH,PUT,DELETE | `timetable.read` | `timetable.write` |
+| `timetable-slots` | Timetable Slots | GET,POST,PATCH,PUT,DELETE | `timetable.read` | `timetable.write` |
+| `timetables` | Timetables | GET,POST,PATCH,PUT,DELETE | `timetable.read` | `timetable.write` |
+| `tt-columns` | Tt columns | GET,POST,PATCH,PUT,DELETE | `tt-columns.read` | `tt-columns.write` |
+| `tt-day-row-class-exceptions` | Tt day row class exceptions | GET,POST,PATCH,PUT,DELETE | `tt-day-row-class-exceptions.read` | `tt-day-row-class-exceptions.write` |
+| `tt-imports` | Tt imports | GET,POST,PATCH,PUT,DELETE | `tt-imports.read` | `tt-imports.write` |
+| `tt-space-bookings` | Tt space bookings | GET,POST,PATCH,PUT,DELETE | `tt-space-bookings.read` | `tt-space-bookings.write` |
+| `tt-space-changes` | Tt space changes | GET,POST,PATCH,PUT,DELETE | `tt-space-changes.read` | `tt-space-changes.write` |
+| `unit-blocks` | Unit blocks | GET,POST,PATCH,PUT,DELETE | `unit-blocks.read` | `unit-blocks.write` |
+| `unit-class-blocks` | Unit class blocks | GET,POST,PATCH,PUT,DELETE | `unit-class-blocks.read` | `unit-class-blocks.write` |
+| `unit-classes` | Unit classes | GET,POST,PATCH,PUT,DELETE | `unit-classes.read` | `unit-classes.write` |
+| `unit-outcomes` | Unit outcomes | GET,POST,PATCH,PUT,DELETE | `unit-outcomes.read` | `unit-outcomes.write` |
+| `units` | Units | GET,POST,PATCH,PUT,DELETE | `units.read` | `units.write` |
+
+### Accounting
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `accounts` | Chart of Accounts | GET,POST,PATCH,PUT,DELETE | `accounting.read` | `accounting.write` |
+| `assets` | Assets | GET,POST,PATCH,PUT,DELETE | `accounting.read` | `accounting.write` |
+| `bank-reconciliations` | Bank Reconciliations | GET,POST,PATCH,PUT,DELETE | `accounting.read` | `accounting.write` |
+| `cash-accounts` | Cash Accounts | GET,POST,PATCH,PUT,DELETE | `accounting.read` | `accounting.write` |
+| `cost-centers` | Cost Centres | GET,POST,PATCH,PUT,DELETE | `accounting.read` | `accounting.write` |
+| `depreciations` | Depreciations | GET,POST,PATCH,PUT,DELETE | `accounting.read` | `accounting.write` |
+| `discounts` | Discounts | GET,POST,PATCH,PUT,DELETE | `accounting.read` | `accounting.write` |
+| `fee-items` | Fee Items | GET,POST,PATCH,PUT,DELETE | `accounting.read` | `accounting.write` |
+| `fee-plan-items` | Fee Plan Items | GET,POST,PATCH,PUT,DELETE | `accounting.read` | `accounting.write` |
+| `fee-plans` | Fee Plans | GET,POST,PATCH,PUT,DELETE | `accounting.read` | `accounting.write` |
+| `finance-audit-log` | Finance Audit Log | GET | `accounting.read` | — |
+| `fiscal-years` | Fiscal Years | GET,POST,PATCH,PUT,DELETE | `accounting.read` | `accounting.write` |
+| `journal-entries` | Journal Entries | GET | `accounting.read` | — |
+| `journal-lines` | Journal Lines | GET | `accounting.read` | — |
+| `payment-vouchers` | Payment Vouchers | GET,POST,PATCH,PUT,DELETE | `accounting.read` | `accounting.write` |
+| `payroll-lines` | Payroll Lines | GET,POST,PATCH,PUT,DELETE | `accounting.read` | `accounting.write` |
+| `payroll-runs` | Payroll Runs | GET,POST,PATCH,PUT,DELETE | `accounting.read` | `accounting.write` |
+| `periods` | Fiscal Periods | GET,POST,PATCH,PUT,DELETE | `accounting.read` | `accounting.write` |
+| `purchase-bills` | Purchase Bills | GET,POST,PATCH,PUT,DELETE | `accounting.read` | `accounting.write` |
+| `receipts` | Receipts | GET,POST,PATCH,PUT,DELETE | `accounting.read` | `accounting.write` |
+| `salary-components` | Salary Components | GET,POST,PATCH,PUT,DELETE | `accounting.read` | `accounting.write` |
+| `sequences` | Document Sequences | GET | `accounting.read` | — |
+| `staff-salaries` | Staff Salaries | GET,POST,PATCH,PUT,DELETE | `accounting.read` | `accounting.write` |
+| `student-discounts` | Student Discounts | GET,POST,PATCH,PUT,DELETE | `accounting.read` | `accounting.write` |
+| `suppliers` | Suppliers | GET,POST,PATCH,PUT,DELETE | `accounting.read` | `accounting.write` |
+| `transfers` | Transfers | GET,POST,PATCH,PUT,DELETE | `accounting.read` | `accounting.write` |
+
+### Messenger
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `chat-attachments` | Chat Attachments | GET,POST,PATCH,PUT,DELETE | `messenger.read` | `messenger.write` |
+| `chat-messages` | Chat Messages | GET,POST,PATCH,PUT,DELETE | `messenger.read` | `messenger.write` |
+| `chat-participants` | Chat Participants | GET,POST,PATCH,PUT,DELETE | `messenger.read` | `messenger.write` |
+| `chats` | Chats | GET,POST,PATCH,PUT,DELETE | `messenger.read` | `messenger.write` |
+
+### Modules: ATL
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `atl-columns` | Atl columns | GET,POST,PATCH,PUT,DELETE | `atl-columns.read` | `atl-columns.write` |
+| `atl-entries` | Atl entries | GET,POST,PATCH,PUT,DELETE | `atl-entries.read` | `atl-entries.write` |
+
+### Modules: Alumni
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `alumni-alumnuses` | Alumni alumnuses | GET,POST,PATCH,PUT,DELETE | `alumni-alumnuses.read` | `alumni-alumnuses.write` |
+
+### Modules: Badges
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `badge-awards` | Badge Awards | GET,POST,PATCH,PUT,DELETE | `badges.read` | `badges.write` |
+| `badges` | Badges | GET,POST,PATCH,PUT,DELETE | `badges.read` | `badges.write` |
+| `badges-awards-award-students` | Badges awards award students | GET,POST,PATCH,PUT,DELETE | `badges-awards-award-students.read` | `badges-awards-award-students.write` |
+
+### Modules: Bulk Data Processor
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `bulk-job-errors` | Bulk Job Errors | GET,POST,PATCH,PUT,DELETE | `bulkjobs.read` | `bulkjobs.write` |
+| `bulk-jobs` | Bulk Jobs | GET,POST,PATCH,PUT,DELETE | `bulkjobs.read` | `bulkjobs.write` |
+
+### Modules: CFA
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `cfa-columns` | Cfa columns | GET,POST,PATCH,PUT,DELETE | `cfa-columns.read` | `cfa-columns.write` |
+| `cfa-entries` | Cfa entries | GET,POST,PATCH,PUT,DELETE | `cfa-entries.read` | `cfa-entries.write` |
+
+### Modules: Clinics
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `clinic-students` | Clinic Students | GET,POST,PATCH,PUT,DELETE | `clinics.read` | `clinics.write` |
+| `clinics` | Clinics | GET,POST,PATCH,PUT,DELETE | `clinics.read` | `clinics.write` |
+| `clinics-blocks` | Clinics blocks | GET,POST,PATCH,PUT,DELETE | `clinics-blocks.read` | `clinics-blocks.write` |
+| `clinics-priorities` | Clinics priorities | GET,POST,PATCH,PUT,DELETE | `clinics-priorities.read` | `clinics-priorities.write` |
+
+### Modules: Communication Hub
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `delivery-log` | Delivery Log | GET,POST,PATCH,PUT,DELETE | `messaging.read` | `messaging.write` |
+| `message-templates` | Message Templates | GET,POST,PATCH,PUT,DELETE | `messaging.read` | `messaging.write` |
+| `scheduled-messages` | Scheduled Messages | GET,POST,PATCH,PUT,DELETE | `messaging.read` | `messaging.write` |
+
+### Modules: Credentials
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `credentials-credentials` | Credentials credentials | GET,POST,PATCH,PUT,DELETE | `credentials-credentials.read` | `credentials-credentials.write` |
+| `credentials-websites` | Credentials websites | GET,POST,PATCH,PUT,DELETE | `credentials-websites.read` | `credentials-websites.write` |
+
+### Modules: Deep Learning
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `deep-learning-choices` | Deep learning choices | GET,POST,PATCH,PUT,DELETE | `deep-learning-choices.read` | `deep-learning-choices.write` |
+| `deep-learning-enrolments` | Deep learning enrolments | GET,POST,PATCH,PUT,DELETE | `deep-learning-enrolments.read` | `deep-learning-enrolments.write` |
+| `deep-learning-event-dates` | Deep learning event dates | GET,POST,PATCH,PUT,DELETE | `deep-learning-event-dates.read` | `deep-learning-event-dates.write` |
+| `deep-learning-events` | Deep learning events | GET,POST,PATCH,PUT,DELETE | `deep-learning-events.read` | `deep-learning-events.write` |
+| `deep-learning-experience-trips` | Deep learning experience trips | GET,POST,PATCH,PUT,DELETE | `deep-learning-experience-trips.read` | `deep-learning-experience-trips.write` |
+| `deep-learning-experience-venues` | Deep learning experience venues | GET,POST,PATCH,PUT,DELETE | `deep-learning-experience-venues.read` | `deep-learning-experience-venues.write` |
+| `deep-learning-experiences` | Deep learning experiences | GET,POST,PATCH,PUT,DELETE | `deep-learning-experiences.read` | `deep-learning-experiences.write` |
+| `deep-learning-staffs` | Deep learning staffs | GET,POST,PATCH,PUT,DELETE | `deep-learning-staffs.read` | `deep-learning-staffs.write` |
+| `deep-learning-unit-authors` | Deep learning unit authors | GET,POST,PATCH,PUT,DELETE | `deep-learning-unit-authors.read` | `deep-learning-unit-authors.write` |
+| `deep-learning-unit-blocks` | Deep learning unit blocks | GET,POST,PATCH,PUT,DELETE | `deep-learning-unit-blocks.read` | `deep-learning-unit-blocks.write` |
+| `deep-learning-unit-photos` | Deep learning unit photos | GET,POST,PATCH,PUT,DELETE | `deep-learning-unit-photos.read` | `deep-learning-unit-photos.write` |
+| `deep-learning-unit-tags` | Deep learning unit tags | GET,POST,PATCH,PUT,DELETE | `deep-learning-unit-tags.read` | `deep-learning-unit-tags.write` |
+| `deep-learning-units` | Deep learning units | GET,POST,PATCH,PUT,DELETE | `deep-learning-units.read` | `deep-learning-units.write` |
+
+### Modules: Enrichment and Flow
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `enf-announcements` | Enf announcements | GET,POST,PATCH,PUT,DELETE | `enf-announcements.read` | `enf-announcements.write` |
+| `enf-block-dates` | Enf block dates | GET,POST,PATCH,PUT,DELETE | `enf-block-dates.read` | `enf-block-dates.write` |
+| `enf-block-facilities` | Enf block facilities | GET,POST,PATCH,PUT,DELETE | `enf-block-facilities.read` | `enf-block-facilities.write` |
+| `enf-blocks` | Enf blocks | GET,POST,PATCH,PUT,DELETE | `enf-blocks.read` | `enf-blocks.write` |
+| `enf-credit-mentors` | Enf credit mentors | GET,POST,PATCH,PUT,DELETE | `enf-credit-mentors.read` | `enf-credit-mentors.write` |
+| `enf-credits` | Enf credits | GET,POST,PATCH,PUT,DELETE | `enf-credits.read` | `enf-credits.write` |
+| `enf-domains` | Enf domains | GET,POST,PATCH,PUT,DELETE | `enf-domains.read` | `enf-domains.write` |
+| `enf-journeys` | Enf journeys | GET,POST,PATCH,PUT,DELETE | `enf-journeys.read` | `enf-journeys.write` |
+| `enf-opportunities` | Enf opportunities | GET,POST,PATCH,PUT,DELETE | `enf-opportunities.read` | `enf-opportunities.write` |
+| `enf-opportunity-credits` | Enf opportunity credits | GET,POST,PATCH,PUT,DELETE | `enf-opportunity-credits.read` | `enf-opportunity-credits.write` |
+| `enf-opportunity-mentors` | Enf opportunity mentors | GET,POST,PATCH,PUT,DELETE | `enf-opportunity-mentors.read` | `enf-opportunity-mentors.write` |
+| `enf-planned-session-teachers` | Enf planned session teachers | GET,POST,PATCH,PUT,DELETE | `enf-planned-session-teachers.read` | `enf-planned-session-teachers.write` |
+| `enf-planned-sessions` | Enf planned sessions | GET,POST,PATCH,PUT,DELETE | `enf-planned-sessions.read` | `enf-planned-sessions.write` |
+| `enf-planner-entries` | Enf planner entries | GET,POST,PATCH,PUT,DELETE | `enf-planner-entries.read` | `enf-planner-entries.write` |
+| `enf-planner-tasks` | Enf planner tasks | GET,POST,PATCH,PUT,DELETE | `enf-planner-tasks.read` | `enf-planner-tasks.write` |
+| `enf-session-students` | Enf session students | GET,POST,PATCH,PUT,DELETE | `enf-session-students.read` | `enf-session-students.write` |
+| `enf-sessions` | Enf sessions | GET,POST,PATCH,PUT,DELETE | `enf-sessions.read` | `enf-sessions.write` |
+
+### Modules: Flexible Learning
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `flexible-learning-categories` | Flexible learning categories | GET,POST,PATCH,PUT,DELETE | `flexible-learning-categories.read` | `flexible-learning-categories.write` |
+| `flexible-learning-majors` | Flexible learning majors | GET,POST,PATCH,PUT,DELETE | `flexible-learning-majors.read` | `flexible-learning-majors.write` |
+| `flexible-learning-unit-blocks` | Flexible learning unit blocks | GET,POST,PATCH,PUT,DELETE | `flexible-learning-unit-blocks.read` | `flexible-learning-unit-blocks.write` |
+| `flexible-learning-unit-submissions` | Flexible learning unit submissions | GET,POST,PATCH,PUT,DELETE | `flexible-learning-unit-submissions.read` | `flexible-learning-unit-submissions.write` |
+| `flexible-learning-units` | Flexible learning units | GET,POST,PATCH,PUT,DELETE | `flexible-learning-units.read` | `flexible-learning-units.write` |
+
+### Modules: Free Learning
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `free-learning-badges` | Free learning badges | GET,POST,PATCH,PUT,DELETE | `free-learning-badges.read` | `free-learning-badges.write` |
+| `free-learning-mentor-group-persons` | Free learning mentor group persons | GET,POST,PATCH,PUT,DELETE | `free-learning-mentor-group-persons.read` | `free-learning-mentor-group-persons.write` |
+| `free-learning-mentor-groups` | Free learning mentor groups | GET,POST,PATCH,PUT,DELETE | `free-learning-mentor-groups.read` | `free-learning-mentor-groups.write` |
+| `free-learning-progress` | Free Learning Progress | GET,POST,PATCH,PUT,DELETE | `freelearning.read` | `freelearning.write` |
+| `free-learning-unit-authors` | Free learning unit authors | GET,POST,PATCH,PUT,DELETE | `free-learning-unit-authors.read` | `free-learning-unit-authors.write` |
+| `free-learning-unit-blocks` | Free learning unit blocks | GET,POST,PATCH,PUT,DELETE | `free-learning-unit-blocks.read` | `free-learning-unit-blocks.write` |
+| `free-learning-unit-outcomes` | Free learning unit outcomes | GET,POST,PATCH,PUT,DELETE | `free-learning-unit-outcomes.read` | `free-learning-unit-outcomes.write` |
+| `free-learning-unit-prerequisites` | Free learning unit prerequisites | GET,POST,PATCH,PUT,DELETE | `free-learning-unit-prerequisites.read` | `free-learning-unit-prerequisites.write` |
+| `free-learning-units` | Free Learning Units | GET,POST,PATCH,PUT,DELETE | `freelearning.read` | `freelearning.write` |
+
+### Modules: Help Desk
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `helpdesk-department-permissionses` | Helpdesk department permissionses | GET,POST,PATCH,PUT,DELETE | `helpdesk-department-permissionses.read` | `helpdesk-department-permissionses.write` |
+| `helpdesk-departmentses` | Helpdesk departmentses | GET,POST,PATCH,PUT,DELETE | `helpdesk-departmentses.read` | `helpdesk-departmentses.write` |
+| `helpdesk-group-departments` | Helpdesk group departments | GET,POST,PATCH,PUT,DELETE | `helpdesk-group-departments.read` | `helpdesk-group-departments.write` |
+| `helpdesk-issue-discusses` | Helpdesk issue discusses | GET,POST,PATCH,PUT,DELETE | `helpdesk-issue-discusses.read` | `helpdesk-issue-discusses.write` |
+| `helpdesk-issue-noteses` | Helpdesk issue noteses | GET,POST,PATCH,PUT,DELETE | `helpdesk-issue-noteses.read` | `helpdesk-issue-noteses.write` |
+| `helpdesk-issues` | Helpdesk issues | GET,POST,PATCH,PUT,DELETE | `helpdesk-issues.read` | `helpdesk-issues.write` |
+| `helpdesk-reply-templates` | Helpdesk reply templates | GET,POST,PATCH,PUT,DELETE | `helpdesk-reply-templates.read` | `helpdesk-reply-templates.write` |
+| `helpdesk-subcategorieses` | Helpdesk subcategorieses | GET,POST,PATCH,PUT,DELETE | `helpdesk-subcategorieses.read` | `helpdesk-subcategorieses.write` |
+| `helpdesk-tech-groupses` | Helpdesk tech groupses | GET,POST,PATCH,PUT,DELETE | `helpdesk-tech-groupses.read` | `helpdesk-tech-groupses.write` |
+| `helpdesk-technicianses` | Helpdesk technicianses | GET,POST,PATCH,PUT,DELETE | `helpdesk-technicianses.read` | `helpdesk-technicianses.write` |
+
+### Modules: Higher Education
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `higher-education-application-institutions` | Higher education application institutions | GET,POST,PATCH,PUT,DELETE | `higher-education-application-institutions.read` | `higher-education-application-institutions.write` |
+| `higher-education-applications` | Higher education applications | GET,POST,PATCH,PUT,DELETE | `higher-education-applications.read` | `higher-education-applications.write` |
+| `higher-education-institutions` | Higher education institutions | GET,POST,PATCH,PUT,DELETE | `higher-education-institutions.read` | `higher-education-institutions.write` |
+| `higher-education-majors` | Higher education majors | GET,POST,PATCH,PUT,DELETE | `higher-education-majors.read` | `higher-education-majors.write` |
+| `higher-education-reference-components` | Higher education reference components | GET,POST,PATCH,PUT,DELETE | `higher-education-reference-components.read` | `higher-education-reference-components.write` |
+| `higher-education-references` | Higher education references | GET,POST,PATCH,PUT,DELETE | `higher-education-references.read` | `higher-education-references.write` |
+| `higher-education-staffs` | Higher education staffs | GET,POST,PATCH,PUT,DELETE | `higher-education-staffs.read` | `higher-education-staffs.write` |
+| `higher-education-students` | Higher education students | GET,POST,PATCH,PUT,DELETE | `higher-education-students.read` | `higher-education-students.write` |
+
+### Modules: House Points
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `house-point-categories` | House Point Categories | GET,POST,PATCH,PUT,DELETE | `housepoints.read` | `housepoints.write` |
+| `house-points-house` | House Points | GET,POST,PATCH,PUT,DELETE | `housepoints.read` | `housepoints.write` |
+| `house-points-student` | Student House Points | GET,POST,PATCH,PUT,DELETE | `housepoints.read` | `housepoints.write` |
+
+### Modules: IB Diploma
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `ib-diploma-cas-commitments` | Ib diploma cas commitments | GET,POST,PATCH,PUT,DELETE | `ib-diploma-cas-commitments.read` | `ib-diploma-cas-commitments.write` |
+| `ib-diploma-cas-interviews` | Ib diploma cas interviews | GET,POST,PATCH,PUT,DELETE | `ib-diploma-cas-interviews.read` | `ib-diploma-cas-interviews.write` |
+| `ib-diploma-cas-reflections` | Ib diploma cas reflections | GET,POST,PATCH,PUT,DELETE | `ib-diploma-cas-reflections.read` | `ib-diploma-cas-reflections.write` |
+| `ib-diploma-cas-staffs` | Ib diploma cas staffs | GET,POST,PATCH,PUT,DELETE | `ib-diploma-cas-staffs.read` | `ib-diploma-cas-staffs.write` |
+| `ib-diploma-cas-supervisor-feedbacks` | Ib diploma cas supervisor feedbacks | GET,POST,PATCH,PUT,DELETE | `ib-diploma-cas-supervisor-feedbacks.read` | `ib-diploma-cas-supervisor-feedbacks.write` |
+| `ib-diploma-students` | Ib diploma students | GET,POST,PATCH,PUT,DELETE | `ib-diploma-students.read` | `ib-diploma-students.write` |
+
+### Modules: IB PYP
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `ibpyp-glossaries` | Ibpyp glossaries | GET,POST,PATCH,PUT,DELETE | `ibpyp-glossaries.read` | `ibpyp-glossaries.write` |
+| `ibpyp-staff-teachings` | Ibpyp staff teachings | GET,POST,PATCH,PUT,DELETE | `ibpyp-staff-teachings.read` | `ibpyp-staff-teachings.write` |
+| `ibpyp-students` | Ibpyp students | GET,POST,PATCH,PUT,DELETE | `ibpyp-students.read` | `ibpyp-students.write` |
+| `ibpyp-unit-master-blocks` | Ibpyp unit master blocks | GET,POST,PATCH,PUT,DELETE | `ibpyp-unit-master-blocks.read` | `ibpyp-unit-master-blocks.write` |
+| `ibpyp-unit-master-smart-blocks` | Ibpyp unit master smart blocks | GET,POST,PATCH,PUT,DELETE | `ibpyp-unit-master-smart-blocks.read` | `ibpyp-unit-master-smart-blocks.write` |
+| `ibpyp-unit-masters` | Ibpyp unit masters | GET,POST,PATCH,PUT,DELETE | `ibpyp-unit-masters.read` | `ibpyp-unit-masters.write` |
+| `ibpyp-unit-working-blocks` | Ibpyp unit working blocks | GET,POST,PATCH,PUT,DELETE | `ibpyp-unit-working-blocks.read` | `ibpyp-unit-working-blocks.write` |
+| `ibpyp-unit-working-classes` | Ibpyp unit working classes | GET,POST,PATCH,PUT,DELETE | `ibpyp-unit-working-classes.read` | `ibpyp-unit-working-classes.write` |
+| `ibpyp-unit-working-smart-blocks` | Ibpyp unit working smart blocks | GET,POST,PATCH,PUT,DELETE | `ibpyp-unit-working-smart-blocks.read` | `ibpyp-unit-working-smart-blocks.write` |
+| `ibpyp-unit-workings` | Ibpyp unit workings | GET,POST,PATCH,PUT,DELETE | `ibpyp-unit-workings.read` | `ibpyp-unit-workings.write` |
+
+### Modules: Info Grid
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `info-grid-entries` | Info grid entries | GET,POST,PATCH,PUT,DELETE | `info-grid-entries.read` | `info-grid-entries.write` |
+
+### Modules: Learning Analytics
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `analytics-cache` | Analytics Cache | GET,POST,PATCH,PUT,DELETE | `analytics.read` | `analytics.write` |
+
+### Modules: Mastery Transcript
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `mastery-transcript-credit-mentors` | Mastery transcript credit mentors | GET,POST,PATCH,PUT,DELETE | `mastery-transcript-credit-mentors.read` | `mastery-transcript-credit-mentors.write` |
+| `mastery-transcript-credits` | Mastery transcript credits | GET,POST,PATCH,PUT,DELETE | `mastery-transcript-credits.read` | `mastery-transcript-credits.write` |
+| `mastery-transcript-domains` | Mastery transcript domains | GET,POST,PATCH,PUT,DELETE | `mastery-transcript-domains.read` | `mastery-transcript-domains.write` |
+| `mastery-transcript-journey-logs` | Mastery transcript journey logs | GET,POST,PATCH,PUT,DELETE | `mastery-transcript-journey-logs.read` | `mastery-transcript-journey-logs.write` |
+| `mastery-transcript-journeys` | Mastery transcript journeys | GET,POST,PATCH,PUT,DELETE | `mastery-transcript-journeys.read` | `mastery-transcript-journeys.write` |
+| `mastery-transcript-opportunities` | Mastery transcript opportunities | GET,POST,PATCH,PUT,DELETE | `mastery-transcript-opportunities.read` | `mastery-transcript-opportunities.write` |
+| `mastery-transcript-opportunity-credits` | Mastery transcript opportunity credits | GET,POST,PATCH,PUT,DELETE | `mastery-transcript-opportunity-credits.read` | `mastery-transcript-opportunity-credits.write` |
+| `mastery-transcript-opportunity-mentors` | Mastery transcript opportunity mentors | GET,POST,PATCH,PUT,DELETE | `mastery-transcript-opportunity-mentors.read` | `mastery-transcript-opportunity-mentors.write` |
+| `mastery-transcript-transcripts` | Mastery transcript transcripts | GET,POST,PATCH,PUT,DELETE | `mastery-transcript-transcripts.read` | `mastery-transcript-transcripts.write` |
+
+### Modules: Meet The Teacher
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `meet-the-teacher-bookings` | Meet the teacher bookings | GET,POST,PATCH,PUT,DELETE | `meet-the-teacher-bookings.read` | `meet-the-teacher-bookings.write` |
+| `meet-the-teacher-custom-groupses` | Meet the teacher custom groupses | GET,POST,PATCH,PUT,DELETE | `meet-the-teacher-custom-groupses.read` | `meet-the-teacher-custom-groupses.write` |
+| `meet-the-teacher-logins` | Meet the teacher logins | GET,POST,PATCH,PUT,DELETE | `meet-the-teacher-logins.read` | `meet-the-teacher-logins.write` |
+
+### Modules: Policies
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `policies-policies` | Policies policies | GET,POST,PATCH,PUT,DELETE | `policies-policies.read` | `policies-policies.write` |
+
+### Modules: Professional Development
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `pd-requests` | Professional Development Requests | GET,POST,PATCH,PUT,DELETE | `pd.read` | `pd.write` |
+| `professional-development-portfolio-tags` | Professional development portfolio tags | GET,POST,PATCH,PUT,DELETE | `professional-development-portfolio-tags.read` | `professional-development-portfolio-tags.write` |
+| `professional-development-portfolios` | Professional development portfolios | GET,POST,PATCH,PUT,DELETE | `professional-development-portfolios.read` | `professional-development-portfolios.write` |
+| `professional-development-request-approverses` | Professional development request approverses | GET,POST,PATCH,PUT,DELETE | `professional-development-request-approverses.read` | `professional-development-request-approverses.write` |
+| `professional-development-request-costs` | Professional development request costs | GET,POST,PATCH,PUT,DELETE | `professional-development-request-costs.read` | `professional-development-request-costs.write` |
+| `professional-development-request-dayses` | Professional development request dayses | GET,POST,PATCH,PUT,DELETE | `professional-development-request-dayses.read` | `professional-development-request-dayses.write` |
+| `professional-development-request-logs` | Professional development request logs | GET,POST,PATCH,PUT,DELETE | `professional-development-request-logs.read` | `professional-development-request-logs.write` |
+| `professional-development-request-persons` | Professional development request persons | GET,POST,PATCH,PUT,DELETE | `professional-development-request-persons.read` | `professional-development-request-persons.write` |
+| `professional-development-resource-tags` | Professional development resource tags | GET,POST,PATCH,PUT,DELETE | `professional-development-resource-tags.read` | `professional-development-resource-tags.write` |
+| `professional-development-resources` | Professional development resources | GET,POST,PATCH,PUT,DELETE | `professional-development-resources.read` | `professional-development-resources.write` |
+
+### Modules: Query Builder
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `query-builder-favourites` | Query builder favourites | GET,POST,PATCH,PUT,DELETE | `query-builder-favourites.read` | `query-builder-favourites.write` |
+| `query-builder-queries` | Query builder queries | GET,POST,PATCH,PUT,DELETE | `query-builder-queries.read` | `query-builder-queries.write` |
+
+### Modules: Stream
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `stream-categories` | Stream categories | GET,POST,PATCH,PUT,DELETE | `stream-categories.read` | `stream-categories.write` |
+| `stream-category-vieweds` | Stream category vieweds | GET,POST,PATCH,PUT,DELETE | `stream-category-vieweds.read` | `stream-category-vieweds.write` |
+| `stream-post-attachments` | Stream post attachments | GET,POST,PATCH,PUT,DELETE | `stream-post-attachments.read` | `stream-post-attachments.write` |
+| `stream-post-tags` | Stream post tags | GET,POST,PATCH,PUT,DELETE | `stream-post-tags.read` | `stream-post-tags.write` |
+| `stream-posts` | Stream Posts | GET,POST,PATCH,PUT,DELETE | `stream.read` | `stream.write` |
+
+### Modules: Trip Planner
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `trip-days` | Trip Days | GET,POST,PATCH,PUT,DELETE | `trips.read` | `trips.write` |
+| `trip-people` | Trip Participants | GET,POST,PATCH,PUT,DELETE | `trips.read` | `trips.write` |
+| `trip-planner-approverses` | Trip planner approverses | GET,POST,PATCH,PUT,DELETE | `trip-planner-approverses.read` | `trip-planner-approverses.write` |
+| `trip-planner-cost-breakdowns` | Trip planner cost breakdowns | GET,POST,PATCH,PUT,DELETE | `trip-planner-cost-breakdowns.read` | `trip-planner-cost-breakdowns.write` |
+| `trip-planner-request-covers` | Trip planner request covers | GET,POST,PATCH,PUT,DELETE | `trip-planner-request-covers.read` | `trip-planner-request-covers.write` |
+| `trip-planner-request-logs` | Trip planner request logs | GET,POST,PATCH,PUT,DELETE | `trip-planner-request-logs.read` | `trip-planner-request-logs.write` |
+| `trip-planner-risk-templateses` | Trip planner risk templateses | GET,POST,PATCH,PUT,DELETE | `trip-planner-risk-templateses.read` | `trip-planner-risk-templateses.write` |
+| `trips` | Trips | GET,POST,PATCH,PUT,DELETE | `trips.read` | `trips.write` |
+
+### Modules: Visual Assessment
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `visual-assessment-attainments` | Visual assessment attainments | GET,POST,PATCH,PUT,DELETE | `visual-assessment-attainments.read` | `visual-assessment-attainments.write` |
+| `visual-assessment-guides` | Visual assessment guides | GET,POST,PATCH,PUT,DELETE | `visual-assessment-guides.read` | `visual-assessment-guides.write` |
+| `visual-assessment-terms` | Visual assessment terms | GET,POST,PATCH,PUT,DELETE | `visual-assessment-terms.read` | `visual-assessment-terms.write` |
+
+### Modules: Workflow Engine
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `workflow-definitions` | Workflow Definitions | GET,POST,PATCH,PUT,DELETE | `workflows.read` | `workflows.write` |
+| `workflow-instance-audit` | Workflow Audit Trail | GET,POST,PATCH,PUT,DELETE | `workflows.read` | `workflows.write` |
+| `workflow-instance-steps` | Workflow Instance Steps | GET,POST,PATCH,PUT,DELETE | `workflows.read` | `workflows.write` |
+| `workflow-instances` | Workflow Instances | GET,POST,PATCH,PUT,DELETE | `workflows.read` | `workflows.write` |
+
+### Operations
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `activities` | Activities | GET,POST,PATCH,PUT,DELETE | `activities.read` | `activities.write` |
+| `activity-attendances` | Activity attendances | GET,POST,PATCH,PUT,DELETE | `activity-attendances.read` | `activity-attendances.write` |
+| `activity-categories` | Activity categories | GET,POST,PATCH,PUT,DELETE | `activity-categories.read` | `activity-categories.write` |
+| `activity-choices` | Activity choices | GET,POST,PATCH,PUT,DELETE | `activity-choices.read` | `activity-choices.write` |
+| `activity-photos` | Activity photos | GET,POST,PATCH,PUT,DELETE | `activity-photos.read` | `activity-photos.write` |
+| `activity-slots` | Activity slots | GET,POST,PATCH,PUT,DELETE | `activity-slots.read` | `activity-slots.write` |
+| `activity-staff` | Activity Staff | GET,POST,PATCH,PUT,DELETE | `activities.read` | `activities.write` |
+| `activity-students` | Activity Students | GET,POST,PATCH,PUT,DELETE | `activities.read` | `activities.write` |
+| `activity-types` | Activity types | GET,POST,PATCH,PUT,DELETE | `activity-types.read` | `activity-types.write` |
+| `admissions-accounts` | Admissions accounts | GET,POST,PATCH,PUT,DELETE | `admissions-accounts.read` | `admissions-accounts.write` |
+| `admissions-applications` | Admissions applications | GET,POST,PATCH,PUT,DELETE | `admissions-applications.read` | `admissions-applications.write` |
+| `application-form-files` | Application form files | GET,POST,PATCH,PUT,DELETE | `application-form-files.read` | `application-form-files.write` |
+| `application-form-links` | Application form links | GET,POST,PATCH,PUT,DELETE | `application-form-links.read` | `application-form-links.write` |
+| `application-form-relationships` | Application form relationships | GET,POST,PATCH,PUT,DELETE | `application-form-relationships.read` | `application-form-relationships.write` |
+| `application-forms` | Application forms | GET,POST,PATCH,PUT,DELETE | `application-forms.read` | `application-forms.write` |
+| `budgets` | Budgets | GET,POST,PATCH,PUT,DELETE | `finance.read` | `finance.write` |
+| `calendar-editors` | Calendar editors | GET,POST,PATCH,PUT,DELETE | `calendar-editors.read` | `calendar-editors.write` |
+| `calendar-event-persons` | Calendar event persons | GET,POST,PATCH,PUT,DELETE | `calendar-event-persons.read` | `calendar-event-persons.write` |
+| `calendar-event-types` | Calendar event types | GET,POST,PATCH,PUT,DELETE | `calendar-event-types.read` | `calendar-event-types.write` |
+| `calendar-events` | Calendar Events | GET,POST,PATCH,PUT,DELETE | `calendar.read` | `calendar.write` |
+| `expenses` | Expenses | GET,POST,PATCH,PUT,DELETE | `finance.read` | `finance.write` |
+| `fees` | Fees | GET,POST,PATCH,PUT,DELETE | `finance.read` | `finance.write` |
+| `finance-billing-schedules` | Finance billing schedules | GET,POST,PATCH,PUT,DELETE | `finance-billing-schedules.read` | `finance-billing-schedules.write` |
+| `finance-budget-cycle-allocations` | Finance budget cycle allocations | GET,POST,PATCH,PUT,DELETE | `finance-budget-cycle-allocations.read` | `finance-budget-cycle-allocations.write` |
+| `finance-budget-cycles` | Finance budget cycles | GET,POST,PATCH,PUT,DELETE | `finance-budget-cycles.read` | `finance-budget-cycles.write` |
+| `finance-budget-persons` | Finance budget persons | GET,POST,PATCH,PUT,DELETE | `finance-budget-persons.read` | `finance-budget-persons.write` |
+| `finance-expense-approvers` | Finance expense approvers | GET,POST,PATCH,PUT,DELETE | `finance-expense-approvers.read` | `finance-expense-approvers.write` |
+| `finance-expense-logs` | Finance expense logs | GET,POST,PATCH,PUT,DELETE | `finance-expense-logs.read` | `finance-expense-logs.write` |
+| `finance-fee-categories` | Finance fee categories | GET,POST,PATCH,PUT,DELETE | `finance-fee-categories.read` | `finance-fee-categories.write` |
+| `finance-invoicee-updates` | Finance invoicee updates | GET,POST,PATCH,PUT,DELETE | `finance-invoicee-updates.read` | `finance-invoicee-updates.write` |
+| `finance-invoicees` | Finance invoicees | GET,POST,PATCH,PUT,DELETE | `finance-invoicees.read` | `finance-invoicees.write` |
+| `finance-petty-cashes` | Finance petty cashes | GET,POST,PATCH,PUT,DELETE | `finance-petty-cashes.read` | `finance-petty-cashes.write` |
+| `form-fields` | Form fields | GET,POST,PATCH,PUT,DELETE | `form-fields.read` | `form-fields.write` |
+| `form-pages` | Form pages | GET,POST,PATCH,PUT,DELETE | `form-pages.read` | `form-pages.write` |
+| `form-submissions` | Form Submissions | GET,POST,PATCH,PUT,DELETE | `forms.read` | `forms.write` |
+| `form-uploads` | Form uploads | GET,POST,PATCH,PUT,DELETE | `form-uploads.read` | `form-uploads.write` |
+| `forms` | Forms | GET,POST,PATCH,PUT,DELETE | `forms.read` | `forms.write` |
+| `group-persons` | Group persons | GET,POST,PATCH,PUT,DELETE | `group-persons.read` | `group-persons.write` |
+| `groups` | Groups | GET,POST,PATCH,PUT,DELETE | `groups.read` | `groups.write` |
+| `invoice-fees` | Invoice Fees | GET,POST,PATCH,PUT,DELETE | `finance.read` | `finance.write` |
+| `invoices` | Invoices | GET,POST,PATCH,PUT,DELETE | `finance.read` | `finance.write` |
+| `library-events` | Library Events | GET,POST,PATCH,PUT,DELETE | `library.read` | `library.write` |
+| `library-items` | Library Items | GET,POST,PATCH,PUT,DELETE | `library.read` | `library.write` |
+| `library-shelf-items` | Library shelf items | GET,POST,PATCH,PUT,DELETE | `library-shelf-items.read` | `library-shelf-items.write` |
+| `library-shelfs` | Library shelfs | GET,POST,PATCH,PUT,DELETE | `library-shelfs.read` | `library-shelfs.write` |
+| `library-types` | Library types | GET,POST,PATCH,PUT,DELETE | `library-types.read` | `library-types.write` |
+| `message-receipts` | Message Receipts | GET,POST,PATCH,PUT,DELETE | `messenger.read` | `messenger.write` |
+| `messages` | Messages | GET,POST,PATCH,PUT,DELETE | `messenger.read` | `messenger.write` |
+| `messenger-canned-responses` | Messenger canned responses | GET,POST,PATCH,PUT,DELETE | `messenger-canned-responses.read` | `messenger-canned-responses.write` |
+| `messenger-mailing-list-recipients` | Messenger mailing list recipients | GET,POST,PATCH,PUT,DELETE | `messenger-mailing-list-recipients.read` | `messenger-mailing-list-recipients.write` |
+| `messenger-mailing-lists` | Messenger mailing lists | GET,POST,PATCH,PUT,DELETE | `messenger-mailing-lists.read` | `messenger-mailing-lists.write` |
+| `messenger-targets` | Messenger targets | GET,POST,PATCH,PUT,DELETE | `messenger-targets.read` | `messenger-targets.write` |
+| `payments` | Payments | GET,POST,PATCH,PUT,DELETE | `payments.read` | `payments.write` |
+| `resource-tags` | Resource tags | GET,POST,PATCH,PUT,DELETE | `resource-tags.read` | `resource-tags.write` |
+| `resources` | Resources | GET,POST,PATCH,PUT,DELETE | `resources.read` | `resources.write` |
+| `staff-absence-dates` | Staff Absence Dates | GET,POST,PATCH,PUT,DELETE | `staff.absence.read` | `staff.absence.write` |
+| `staff-absences` | Staff Absences | GET,POST,PATCH,PUT,DELETE | `staff.absence.read` | `staff.absence.write` |
+| `staff-coverage` | Staff Coverage | GET,POST,PATCH,PUT,DELETE | `staff.absence.read` | `staff.absence.write` |
+| `staff-duties` | Staff Duties | GET,POST,PATCH,PUT,DELETE | `staff.duties.read` | `staff.duties.write` |
+
+### People
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `districts` | Districts | GET,POST,PATCH,PUT,DELETE | `districts.read` | `districts.write` |
+| `families` | Families | GET,POST,PATCH,PUT,DELETE | `families.read` | `families.write` |
+| `family-adults` | Family Adults | GET,POST,PATCH,PUT,DELETE | `families.read` | `families.write` |
+| `family-children` | Family Children | GET,POST,PATCH,PUT,DELETE | `families.read` | `families.write` |
+| `family-relationships` | Family relationships | GET,POST,PATCH,PUT,DELETE | `family-relationships.read` | `family-relationships.write` |
+| `family-updates` | Family updates | GET,POST,PATCH,PUT,DELETE | `family-updates.read` | `family-updates.write` |
+| `person-medical-condition-updates` | Person medical condition updates | GET,POST,PATCH,PUT,DELETE | `person-medical-condition-updates.read` | `person-medical-condition-updates.write` |
+| `person-medical-updates` | Person medical updates | GET,POST,PATCH,PUT,DELETE | `person-medical-updates.read` | `person-medical-updates.write` |
+| `person-photos` | Person photos | GET,POST,PATCH,PUT,DELETE | `person-photos.read` | `person-photos.write` |
+| `person-resets` | Person resets | GET,POST,PATCH,PUT,DELETE | `person-resets.read` | `person-resets.write` |
+| `person-status-logs` | Person status logs | GET,POST,PATCH,PUT,DELETE | `person-status-logs.read` | `person-status-logs.write` |
+| `person-updates` | Person updates | GET,POST,PATCH,PUT,DELETE | `person-updates.read` | `person-updates.write` |
+| `personal-document-types` | Personal document types | GET,POST,PATCH,PUT,DELETE | `personal-document-types.read` | `personal-document-types.write` |
+| `personal-documents` | Personal Documents | GET,POST,PATCH,PUT,DELETE | `documents.read` | `documents.write` |
+| `roles` | Roles | GET,POST,PATCH,PUT,DELETE | `roles.read` | `roles.write` |
+| `staff` | Staff | GET,POST,PATCH,PUT,DELETE | `staff.read` | `staff.write` |
+| `staff-absence-types` | Staff absence types | GET,POST,PATCH,PUT,DELETE | `staff-absence-types.read` | `staff-absence-types.write` |
+| `staff-application-form-files` | Staff application form files | GET,POST,PATCH,PUT,DELETE | `staff-application-form-files.read` | `staff-application-form-files.write` |
+| `staff-application-forms` | Staff application forms | GET,POST,PATCH,PUT,DELETE | `staff-application-forms.read` | `staff-application-forms.write` |
+| `staff-contracts` | Staff Contracts | GET,POST,PATCH,PUT,DELETE | `staff.contracts.read` | `staff.contracts.write` |
+| `staff-coverage-dates` | Staff coverage dates | GET,POST,PATCH,PUT,DELETE | `staff-coverage-dates.read` | `staff-coverage-dates.write` |
+| `staff-duty-persons` | Staff duty persons | GET,POST,PATCH,PUT,DELETE | `staff-duty-persons.read` | `staff-duty-persons.write` |
+| `staff-job-openings` | Staff job openings | GET,POST,PATCH,PUT,DELETE | `staff-job-openings.read` | `staff-job-openings.write` |
+| `staff-updates` | Staff updates | GET,POST,PATCH,PUT,DELETE | `staff-updates.read` | `staff-updates.write` |
+| `students` | Students | GET,POST,PATCH,PUT,DELETE | `students.read` | `students.write` |
+| `substitutes` | Substitutes | GET,POST,PATCH,PUT,DELETE | `substitutes.read` | `substitutes.write` |
+| `username-formats` | Username formats | GET,POST,PATCH,PUT,DELETE | `username-formats.read` | `username-formats.write` |
+| `users` | Users | GET,POST,PATCH,PUT,DELETE | `users.read` | `users.write` |
+
+### School
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `calendars` | Calendars | GET,POST,PATCH,PUT,DELETE | `calendar.read` | `calendar.write` |
+| `days-of-weeks` | Days of weeks | GET,POST,PATCH,PUT,DELETE | `days-of-weeks.read` | `days-of-weeks.write` |
+| `department-resources` | Department resources | GET,POST,PATCH,PUT,DELETE | `department-resources.read` | `department-resources.write` |
+| `department-staff` | Department Staff | GET,POST,PATCH,PUT,DELETE | `departments.read` | `departments.write` |
+| `departments` | Departments | GET,POST,PATCH,PUT,DELETE | `departments.read` | `departments.write` |
+| `form-groups` | Form Groups | GET,POST,PATCH,PUT,DELETE | `school.read` | `school.write` |
+| `grade-scale-grades` | Grade Scale Grades | GET,POST,PATCH,PUT,DELETE | `school.read` | `school.write` |
+| `grade-scales` | Grade Scales | GET,POST,PATCH,PUT,DELETE | `school.read` | `school.write` |
+| `houses` | Houses | GET,POST,PATCH,PUT,DELETE | `school.read` | `school.write` |
+| `school-terms` | School Terms | GET,POST,PATCH,PUT,DELETE | `school.read` | `school.write` |
+| `school-years` | School Years | GET,POST,PATCH,PUT,DELETE | `school.read` | `school.write` |
+| `space-persons` | Space persons | GET,POST,PATCH,PUT,DELETE | `space-persons.read` | `space-persons.write` |
+| `spaces` | Spaces | GET,POST,PATCH,PUT,DELETE | `school.read` | `school.write` |
+| `special-days` | Special Days | GET,POST,PATCH,PUT,DELETE | `school.read` | `school.write` |
+| `year-groups` | Year Groups | GET,POST,PATCH,PUT,DELETE | `school.read` | `school.write` |
+
+### System
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `actions` | Actions | GET,POST,PATCH,PUT,DELETE | `system.read` | `system.write` |
+| `alarm-confirms` | Alarm confirms | GET,POST,PATCH,PUT,DELETE | `alarm-confirms.read` | `alarm-confirms.write` |
+| `alarms` | Alarms | GET,POST,PATCH,PUT,DELETE | `alarms.read` | `alarms.write` |
+| `api-logs` | API Request Log | GET,POST,PATCH,PUT,DELETE | `apilogs.read` | `apilogs.write` |
+| `countries` | Countries | GET,POST,PATCH,PUT,DELETE | `countries.read` | `countries.write` |
+| `custom-fields` | Custom Fields | GET,POST,PATCH,PUT,DELETE | `system.read` | `system.write` |
+| `data-retentions` | Data retentions | GET,POST,PATCH,PUT,DELETE | `data-retentions.read` | `data-retentions.write` |
+| `discussions` | Discussions | GET,POST,PATCH,PUT,DELETE | `discussions.read` | `discussions.write` |
+| `email-templates` | Email templates | GET,POST,PATCH,PUT,DELETE | `email-templates.read` | `email-templates.write` |
+| `file-extensions` | File extensions | GET,POST,PATCH,PUT,DELETE | `file-extensions.read` | `file-extensions.write` |
+| `hooks` | Hooks | GET,POST,PATCH,PUT,DELETE | `hooks.read` | `hooks.write` |
+| `i18ns` | Languages | GET | `i18ns.read` | — |
+| `languages` | Languages | GET,POST,PATCH,PUT,DELETE | `languages.read` | `languages.write` |
+| `logs` | Logs | GET,POST,PATCH,PUT,DELETE | `logs.read` | `logs.write` |
+| `modules` | Modules | GET,POST,PATCH,PUT,DELETE | `system.read` | `system.write` |
+| `notification-events` | Notification Events | GET,POST,PATCH,PUT,DELETE | `notifications.read` | `notifications.write` |
+| `notification-listeners` | Notification Listeners | GET,POST,PATCH,PUT,DELETE | `notifications.read` | `notifications.write` |
+| `notification-templates` | Notification Templates | GET,POST,PATCH,PUT,DELETE | `notifications.read` | `notifications.write` |
+| `notifications` | Notifications | GET,POST,PATCH,PUT,DELETE | `notifications.read` | `notifications.write` |
+| `outcomes` | Outcomes | GET,POST,PATCH,PUT,DELETE | `curriculum.read` | `curriculum.write` |
+| `permissions` | Permissions | GET,POST,PATCH,PUT,DELETE | `system.read` | `system.write` |
+| `rubrics` | Rubrics | GET,POST,PATCH,PUT,DELETE | `curriculum.read` | `curriculum.write` |
+| `settings` | Settings | GET,POST,PATCH,PUT,DELETE | `system.read` | `system.write` |
+| `themes` | Themes | GET,POST,PATCH,PUT,DELETE | `themes.read` | `themes.write` |
+
+### Wellbeing
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `alert-levels` | Alert Levels | GET,POST,PATCH,PUT,DELETE | `wellbeing.read` | `wellbeing.write` |
+| `alert-types` | Alert types | GET,POST,PATCH,PUT,DELETE | `alert-types.read` | `alert-types.write` |
+| `alerts` | Alerts | GET,POST,PATCH,PUT,DELETE | `alerts.read` | `alerts.write` |
+| `attendance` | Attendance | GET,POST,PATCH,PUT,DELETE | `attendance.read` | `attendance.write` |
+| `attendance-class-logs` | Class Attendance Logs | GET,POST,PATCH,PUT,DELETE | `attendance.read` | `attendance.write` |
+| `attendance-codes` | Attendance Codes | GET,POST,PATCH,PUT,DELETE | `attendance.read` | `attendance.write` |
+| `attendance-form-group-logs` | Form Group Attendance Logs | GET,POST,PATCH,PUT,DELETE | `attendance.read` | `attendance.write` |
+| `behaviour` | Behaviour Records | GET,POST,PATCH,PUT,DELETE | `behaviour.read` | `behaviour.write` |
+| `behaviour-follow-ups` | Behaviour follow ups | GET,POST,PATCH,PUT,DELETE | `behaviour-follow-ups.read` | `behaviour-follow-ups.write` |
+| `behaviour-letters` | Behaviour Letters | GET,POST,PATCH,PUT,DELETE | `behaviour.read` | `behaviour.write` |
+| `first-aid` | First Aid Records | GET,POST,PATCH,PUT,DELETE | `firstaid.read` | `firstaid.write` |
+| `first-aid-follow-ups` | First aid follow ups | GET,POST,PATCH,PUT,DELETE | `first-aid-follow-ups.read` | `first-aid-follow-ups.write` |
+| `in-archives` | In archives | GET,POST,PATCH,PUT,DELETE | `in-archives.read` | `in-archives.write` |
+| `in-assistants` | In assistants | GET,POST,PATCH,PUT,DELETE | `in-assistants.read` | `in-assistants.write` |
+| `in-descriptors` | In descriptors | GET,POST,PATCH,PUT,DELETE | `in-descriptors.read` | `in-descriptors.write` |
+| `in-investigation-contributions` | In investigation contributions | GET,POST,PATCH,PUT,DELETE | `in-investigation-contributions.read` | `in-investigation-contributions.write` |
+| `in-investigations` | In investigations | GET,POST,PATCH,PUT,DELETE | `in-investigations.read` | `in-investigations.write` |
+| `individual-needs` | Individual Needs | GET,POST,PATCH,PUT,DELETE | `individualneeds.read` | `individualneeds.write` |
+| `individual-needs-descriptors` | Individual Needs Descriptors | GET,POST,PATCH,PUT,DELETE | `individualneeds.read` | `individualneeds.write` |
+| `medical` | Medical Records | GET,POST,PATCH,PUT,DELETE | `medical.read` | `medical.write` |
+| `medical-conditions` | Medical Conditions | GET,POST,PATCH,PUT,DELETE | `medical.read` | `medical.write` |
+| `medical-conditions-2` | Medical conditions 2 | GET,POST,PATCH,PUT,DELETE | `medical-conditions-2.read` | `medical-conditions-2.write` |
+| `student-note-categories` | Student note categories | GET,POST,PATCH,PUT,DELETE | `student-note-categories.read` | `student-note-categories.write` |
+| `student-notes` | Student notes | GET,POST,PATCH,PUT,DELETE | `student-notes.read` | `student-notes.write` |
+
+---
+
+## Scopes
+
+Credentials carry a set of scopes. `*` grants everything; otherwise each
+resource lists `read` and (optionally) `write`:
+
+| Scope | Description |
+|------|-------------|
+| `*` | Full access to every endpoint |
+| `accounting.read` | Read any of the 26 accounting resources (Assets, Bank Reconciliations, Cash Accounts, Chart of Accounts, Cost Centres, Depreciations, Discounts, Document Sequences, Fee Items, Fee Plan Items, Fee Plans, Finance Audit Log, Fiscal Periods, Fiscal Years, Journal Entries, Journal Lines, Payment Vouchers, Payroll Lines, Payroll Runs, Purchase Bills, Receipts, Salary Components, Staff Salaries, Student Discounts, Suppliers, Transfers) |
+| `accounting.write` | Create, update and delete any of the 22 writable accounting resources (Assets, Bank Reconciliations, Cash Accounts, Chart of Accounts, Cost Centres, Depreciations, Discounts, Fee Items, Fee Plan Items, Fee Plans, Fiscal Periods, Fiscal Years, Payment Vouchers, Payroll Lines, Payroll Runs, Purchase Bills, Receipts, Salary Components, Staff Salaries, Student Discounts, Suppliers, Transfers) |
+| `activities.read` | Read any of the 3 activities resources (Activities, Activity Staff, Activity Students) |
+| `activities.write` | Create, update and delete any of the 3 writable activities resources (Activities, Activity Staff, Activity Students) |
+| `activity-attendances.read` | Read Activity attendances |
+| `activity-attendances.write` | Create, update and delete Activity attendances |
+| `activity-categories.read` | Read Activity categories |
+| `activity-categories.write` | Create, update and delete Activity categories |
+| `activity-choices.read` | Read Activity choices |
+| `activity-choices.write` | Create, update and delete Activity choices |
+| `activity-photos.read` | Read Activity photos |
+| `activity-photos.write` | Create, update and delete Activity photos |
+| `activity-slots.read` | Read Activity slots |
+| `activity-slots.write` | Create, update and delete Activity slots |
+| `activity-types.read` | Read Activity types |
+| `activity-types.write` | Create, update and delete Activity types |
+| `admissions-accounts.read` | Read Admissions accounts |
+| `admissions-accounts.write` | Create, update and delete Admissions accounts |
+| `admissions-applications.read` | Read Admissions applications |
+| `admissions-applications.write` | Create, update and delete Admissions applications |
+| `alarm-confirms.read` | Read Alarm confirms |
+| `alarm-confirms.write` | Create, update and delete Alarm confirms |
+| `alarms.read` | Read Alarms |
+| `alarms.write` | Create, update and delete Alarms |
+| `alert-types.read` | Read Alert types |
+| `alert-types.write` | Create, update and delete Alert types |
+| `alerts.read` | Read Alerts |
+| `alerts.write` | Create, update and delete Alerts |
+| `alumni-alumnuses.read` | Read Alumni alumnuses |
+| `alumni-alumnuses.write` | Create, update and delete Alumni alumnuses |
+| `analytics.read` | Read Analytics Cache |
+| `analytics.write` | Create, update and delete Analytics Cache |
+| `apilogs.read` | Read API Request Log |
+| `apilogs.write` | Create, update and delete API Request Log |
+| `application-form-files.read` | Read Application form files |
+| `application-form-files.write` | Create, update and delete Application form files |
+| `application-form-links.read` | Read Application form links |
+| `application-form-links.write` | Create, update and delete Application form links |
+| `application-form-relationships.read` | Read Application form relationships |
+| `application-form-relationships.write` | Create, update and delete Application form relationships |
+| `application-forms.read` | Read Application forms |
+| `application-forms.write` | Create, update and delete Application forms |
+| `atl-columns.read` | Read Atl columns |
+| `atl-columns.write` | Create, update and delete Atl columns |
+| `atl-entries.read` | Read Atl entries |
+| `atl-entries.write` | Create, update and delete Atl entries |
+| `attendance.read` | Read any of the 4 attendance resources (Attendance, Attendance Codes, Class Attendance Logs, Form Group Attendance Logs) |
+| `attendance.write` | Create, update and delete any of the 4 writable attendance resources (Attendance, Attendance Codes, Class Attendance Logs, Form Group Attendance Logs) |
+| `badges-awards-award-students.read` | Read Badges awards award students |
+| `badges-awards-award-students.write` | Create, update and delete Badges awards award students |
+| `badges.read` | Read any of the 2 badges resources (Badge Awards, Badges) |
+| `badges.write` | Create, update and delete any of the 2 writable badges resources (Badge Awards, Badges) |
+| `behaviour-follow-ups.read` | Read Behaviour follow ups |
+| `behaviour-follow-ups.write` | Create, update and delete Behaviour follow ups |
+| `behaviour.read` | Read any of the 2 behaviour resources (Behaviour Letters, Behaviour Records) |
+| `behaviour.write` | Create, update and delete any of the 2 writable behaviour resources (Behaviour Letters, Behaviour Records) |
+| `bulkjobs.read` | Read any of the 2 bulkjobs resources (Bulk Job Errors, Bulk Jobs) |
+| `bulkjobs.write` | Create, update and delete any of the 2 writable bulkjobs resources (Bulk Job Errors, Bulk Jobs) |
+| `calendar-editors.read` | Read Calendar editors |
+| `calendar-editors.write` | Create, update and delete Calendar editors |
+| `calendar-event-persons.read` | Read Calendar event persons |
+| `calendar-event-persons.write` | Create, update and delete Calendar event persons |
+| `calendar-event-types.read` | Read Calendar event types |
+| `calendar-event-types.write` | Create, update and delete Calendar event types |
+| `calendar.read` | Read any of the 2 calendar resources (Calendar Events, Calendars) |
+| `calendar.write` | Create, update and delete any of the 2 writable calendar resources (Calendar Events, Calendars) |
+| `cfa-columns.read` | Read Cfa columns |
+| `cfa-columns.write` | Create, update and delete Cfa columns |
+| `cfa-entries.read` | Read Cfa entries |
+| `cfa-entries.write` | Create, update and delete Cfa entries |
+| `classes.read` | Read Classes |
+| `classes.write` | Create, update and delete Classes |
+| `clinics-blocks.read` | Read Clinics blocks |
+| `clinics-blocks.write` | Create, update and delete Clinics blocks |
+| `clinics-priorities.read` | Read Clinics priorities |
+| `clinics-priorities.write` | Create, update and delete Clinics priorities |
+| `clinics.read` | Read any of the 2 clinics resources (Clinic Students, Clinics) |
+| `clinics.write` | Create, update and delete any of the 2 writable clinics resources (Clinic Students, Clinics) |
+| `countries.read` | Read Countries |
+| `countries.write` | Create, update and delete Countries |
+| `course-class-maps.read` | Read Course class maps |
+| `course-class-maps.write` | Create, update and delete Course class maps |
+| `courses.read` | Read Courses |
+| `courses.write` | Create, update and delete Courses |
+| `credentials-credentials.read` | Read Credentials credentials |
+| `credentials-credentials.write` | Create, update and delete Credentials credentials |
+| `credentials-websites.read` | Read Credentials websites |
+| `credentials-websites.write` | Create, update and delete Credentials websites |
+| `crowd-assess-discusses.read` | Read Crowd assess discusses |
+| `crowd-assess-discusses.write` | Create, update and delete Crowd assess discusses |
+| `curriculum.read` | Read any of the 2 curriculum resources (Outcomes, Rubrics) |
+| `curriculum.write` | Create, update and delete any of the 2 writable curriculum resources (Outcomes, Rubrics) |
+| `data-retentions.read` | Read Data retentions |
+| `data-retentions.write` | Create, update and delete Data retentions |
+| `days-of-weeks.read` | Read Days of weeks |
+| `days-of-weeks.write` | Create, update and delete Days of weeks |
+| `deep-learning-choices.read` | Read Deep learning choices |
+| `deep-learning-choices.write` | Create, update and delete Deep learning choices |
+| `deep-learning-enrolments.read` | Read Deep learning enrolments |
+| `deep-learning-enrolments.write` | Create, update and delete Deep learning enrolments |
+| `deep-learning-event-dates.read` | Read Deep learning event dates |
+| `deep-learning-event-dates.write` | Create, update and delete Deep learning event dates |
+| `deep-learning-events.read` | Read Deep learning events |
+| `deep-learning-events.write` | Create, update and delete Deep learning events |
+| `deep-learning-experience-trips.read` | Read Deep learning experience trips |
+| `deep-learning-experience-trips.write` | Create, update and delete Deep learning experience trips |
+| `deep-learning-experience-venues.read` | Read Deep learning experience venues |
+| `deep-learning-experience-venues.write` | Create, update and delete Deep learning experience venues |
+| `deep-learning-experiences.read` | Read Deep learning experiences |
+| `deep-learning-experiences.write` | Create, update and delete Deep learning experiences |
+| `deep-learning-staffs.read` | Read Deep learning staffs |
+| `deep-learning-staffs.write` | Create, update and delete Deep learning staffs |
+| `deep-learning-unit-authors.read` | Read Deep learning unit authors |
+| `deep-learning-unit-authors.write` | Create, update and delete Deep learning unit authors |
+| `deep-learning-unit-blocks.read` | Read Deep learning unit blocks |
+| `deep-learning-unit-blocks.write` | Create, update and delete Deep learning unit blocks |
+| `deep-learning-unit-photos.read` | Read Deep learning unit photos |
+| `deep-learning-unit-photos.write` | Create, update and delete Deep learning unit photos |
+| `deep-learning-unit-tags.read` | Read Deep learning unit tags |
+| `deep-learning-unit-tags.write` | Create, update and delete Deep learning unit tags |
+| `deep-learning-units.read` | Read Deep learning units |
+| `deep-learning-units.write` | Create, update and delete Deep learning units |
+| `department-resources.read` | Read Department resources |
+| `department-resources.write` | Create, update and delete Department resources |
+| `departments.read` | Read any of the 2 departments resources (Department Staff, Departments) |
+| `departments.write` | Create, update and delete any of the 2 writable departments resources (Department Staff, Departments) |
+| `discussions.read` | Read Discussions |
+| `discussions.write` | Create, update and delete Discussions |
+| `districts.read` | Read Districts |
+| `districts.write` | Create, update and delete Districts |
+| `documents.read` | Read Personal Documents |
+| `documents.write` | Create, update and delete Personal Documents |
+| `email-templates.read` | Read Email templates |
+| `email-templates.write` | Create, update and delete Email templates |
+| `enf-announcements.read` | Read Enf announcements |
+| `enf-announcements.write` | Create, update and delete Enf announcements |
+| `enf-block-dates.read` | Read Enf block dates |
+| `enf-block-dates.write` | Create, update and delete Enf block dates |
+| `enf-block-facilities.read` | Read Enf block facilities |
+| `enf-block-facilities.write` | Create, update and delete Enf block facilities |
+| `enf-blocks.read` | Read Enf blocks |
+| `enf-blocks.write` | Create, update and delete Enf blocks |
+| `enf-credit-mentors.read` | Read Enf credit mentors |
+| `enf-credit-mentors.write` | Create, update and delete Enf credit mentors |
+| `enf-credits.read` | Read Enf credits |
+| `enf-credits.write` | Create, update and delete Enf credits |
+| `enf-domains.read` | Read Enf domains |
+| `enf-domains.write` | Create, update and delete Enf domains |
+| `enf-journeys.read` | Read Enf journeys |
+| `enf-journeys.write` | Create, update and delete Enf journeys |
+| `enf-opportunities.read` | Read Enf opportunities |
+| `enf-opportunities.write` | Create, update and delete Enf opportunities |
+| `enf-opportunity-credits.read` | Read Enf opportunity credits |
+| `enf-opportunity-credits.write` | Create, update and delete Enf opportunity credits |
+| `enf-opportunity-mentors.read` | Read Enf opportunity mentors |
+| `enf-opportunity-mentors.write` | Create, update and delete Enf opportunity mentors |
+| `enf-planned-session-teachers.read` | Read Enf planned session teachers |
+| `enf-planned-session-teachers.write` | Create, update and delete Enf planned session teachers |
+| `enf-planned-sessions.read` | Read Enf planned sessions |
+| `enf-planned-sessions.write` | Create, update and delete Enf planned sessions |
+| `enf-planner-entries.read` | Read Enf planner entries |
+| `enf-planner-entries.write` | Create, update and delete Enf planner entries |
+| `enf-planner-tasks.read` | Read Enf planner tasks |
+| `enf-planner-tasks.write` | Create, update and delete Enf planner tasks |
+| `enf-session-students.read` | Read Enf session students |
+| `enf-session-students.write` | Create, update and delete Enf session students |
+| `enf-sessions.read` | Read Enf sessions |
+| `enf-sessions.write` | Create, update and delete Enf sessions |
+| `enrolments.read` | Read Class Enrolments |
+| `enrolments.write` | Create, update and delete Class Enrolments |
+| `external-assessment-fields.read` | Read External assessment fields |
+| `external-assessment-fields.write` | Create, update and delete External assessment fields |
+| `external-assessment-student-entries.read` | Read External assessment student entries |
+| `external-assessment-student-entries.write` | Create, update and delete External assessment student entries |
+| `external-assessment-students.read` | Read External assessment students |
+| `external-assessment-students.write` | Create, update and delete External assessment students |
+| `external-assessments.read` | Read External assessments |
+| `external-assessments.write` | Create, update and delete External assessments |
+| `families.read` | Read any of the 3 families resources (Families, Family Adults, Family Children) |
+| `families.write` | Create, update and delete any of the 3 writable families resources (Families, Family Adults, Family Children) |
+| `family-relationships.read` | Read Family relationships |
+| `family-relationships.write` | Create, update and delete Family relationships |
+| `family-updates.read` | Read Family updates |
+| `family-updates.write` | Create, update and delete Family updates |
+| `file-extensions.read` | Read File extensions |
+| `file-extensions.write` | Create, update and delete File extensions |
+| `finance-billing-schedules.read` | Read Finance billing schedules |
+| `finance-billing-schedules.write` | Create, update and delete Finance billing schedules |
+| `finance-budget-cycle-allocations.read` | Read Finance budget cycle allocations |
+| `finance-budget-cycle-allocations.write` | Create, update and delete Finance budget cycle allocations |
+| `finance-budget-cycles.read` | Read Finance budget cycles |
+| `finance-budget-cycles.write` | Create, update and delete Finance budget cycles |
+| `finance-budget-persons.read` | Read Finance budget persons |
+| `finance-budget-persons.write` | Create, update and delete Finance budget persons |
+| `finance-expense-approvers.read` | Read Finance expense approvers |
+| `finance-expense-approvers.write` | Create, update and delete Finance expense approvers |
+| `finance-expense-logs.read` | Read Finance expense logs |
+| `finance-expense-logs.write` | Create, update and delete Finance expense logs |
+| `finance-fee-categories.read` | Read Finance fee categories |
+| `finance-fee-categories.write` | Create, update and delete Finance fee categories |
+| `finance-invoicee-updates.read` | Read Finance invoicee updates |
+| `finance-invoicee-updates.write` | Create, update and delete Finance invoicee updates |
+| `finance-invoicees.read` | Read Finance invoicees |
+| `finance-invoicees.write` | Create, update and delete Finance invoicees |
+| `finance-petty-cashes.read` | Read Finance petty cashes |
+| `finance-petty-cashes.write` | Create, update and delete Finance petty cashes |
+| `finance.read` | Read any of the 5 finance resources (Budgets, Expenses, Fees, Invoice Fees, Invoices) |
+| `finance.write` | Create, update and delete any of the 5 writable finance resources (Budgets, Expenses, Fees, Invoice Fees, Invoices) |
+| `first-aid-follow-ups.read` | Read First aid follow ups |
+| `first-aid-follow-ups.write` | Create, update and delete First aid follow ups |
+| `firstaid.read` | Read First Aid Records |
+| `firstaid.write` | Create, update and delete First Aid Records |
+| `flexible-learning-categories.read` | Read Flexible learning categories |
+| `flexible-learning-categories.write` | Create, update and delete Flexible learning categories |
+| `flexible-learning-majors.read` | Read Flexible learning majors |
+| `flexible-learning-majors.write` | Create, update and delete Flexible learning majors |
+| `flexible-learning-unit-blocks.read` | Read Flexible learning unit blocks |
+| `flexible-learning-unit-blocks.write` | Create, update and delete Flexible learning unit blocks |
+| `flexible-learning-unit-submissions.read` | Read Flexible learning unit submissions |
+| `flexible-learning-unit-submissions.write` | Create, update and delete Flexible learning unit submissions |
+| `flexible-learning-units.read` | Read Flexible learning units |
+| `flexible-learning-units.write` | Create, update and delete Flexible learning units |
+| `form-fields.read` | Read Form fields |
+| `form-fields.write` | Create, update and delete Form fields |
+| `form-pages.read` | Read Form pages |
+| `form-pages.write` | Create, update and delete Form pages |
+| `form-uploads.read` | Read Form uploads |
+| `form-uploads.write` | Create, update and delete Form uploads |
+| `forms.read` | Read any of the 2 forms resources (Form Submissions, Forms) |
+| `forms.write` | Create, update and delete any of the 2 writable forms resources (Form Submissions, Forms) |
+| `free-learning-badges.read` | Read Free learning badges |
+| `free-learning-badges.write` | Create, update and delete Free learning badges |
+| `free-learning-mentor-group-persons.read` | Read Free learning mentor group persons |
+| `free-learning-mentor-group-persons.write` | Create, update and delete Free learning mentor group persons |
+| `free-learning-mentor-groups.read` | Read Free learning mentor groups |
+| `free-learning-mentor-groups.write` | Create, update and delete Free learning mentor groups |
+| `free-learning-unit-authors.read` | Read Free learning unit authors |
+| `free-learning-unit-authors.write` | Create, update and delete Free learning unit authors |
+| `free-learning-unit-blocks.read` | Read Free learning unit blocks |
+| `free-learning-unit-blocks.write` | Create, update and delete Free learning unit blocks |
+| `free-learning-unit-outcomes.read` | Read Free learning unit outcomes |
+| `free-learning-unit-outcomes.write` | Create, update and delete Free learning unit outcomes |
+| `free-learning-unit-prerequisites.read` | Read Free learning unit prerequisites |
+| `free-learning-unit-prerequisites.write` | Create, update and delete Free learning unit prerequisites |
+| `freelearning.read` | Read any of the 2 freelearning resources (Free Learning Progress, Free Learning Units) |
+| `freelearning.write` | Create, update and delete any of the 2 writable freelearning resources (Free Learning Progress, Free Learning Units) |
+| `group-persons.read` | Read Group persons |
+| `group-persons.write` | Create, update and delete Group persons |
+| `groups.read` | Read Groups |
+| `groups.write` | Create, update and delete Groups |
+| `helpdesk-department-permissionses.read` | Read Helpdesk department permissionses |
+| `helpdesk-department-permissionses.write` | Create, update and delete Helpdesk department permissionses |
+| `helpdesk-departmentses.read` | Read Helpdesk departmentses |
+| `helpdesk-departmentses.write` | Create, update and delete Helpdesk departmentses |
+| `helpdesk-group-departments.read` | Read Helpdesk group departments |
+| `helpdesk-group-departments.write` | Create, update and delete Helpdesk group departments |
+| `helpdesk-issue-discusses.read` | Read Helpdesk issue discusses |
+| `helpdesk-issue-discusses.write` | Create, update and delete Helpdesk issue discusses |
+| `helpdesk-issue-noteses.read` | Read Helpdesk issue noteses |
+| `helpdesk-issue-noteses.write` | Create, update and delete Helpdesk issue noteses |
+| `helpdesk-issues.read` | Read Helpdesk issues |
+| `helpdesk-issues.write` | Create, update and delete Helpdesk issues |
+| `helpdesk-reply-templates.read` | Read Helpdesk reply templates |
+| `helpdesk-reply-templates.write` | Create, update and delete Helpdesk reply templates |
+| `helpdesk-subcategorieses.read` | Read Helpdesk subcategorieses |
+| `helpdesk-subcategorieses.write` | Create, update and delete Helpdesk subcategorieses |
+| `helpdesk-tech-groupses.read` | Read Helpdesk tech groupses |
+| `helpdesk-tech-groupses.write` | Create, update and delete Helpdesk tech groupses |
+| `helpdesk-technicianses.read` | Read Helpdesk technicianses |
+| `helpdesk-technicianses.write` | Create, update and delete Helpdesk technicianses |
+| `higher-education-application-institutions.read` | Read Higher education application institutions |
+| `higher-education-application-institutions.write` | Create, update and delete Higher education application institutions |
+| `higher-education-applications.read` | Read Higher education applications |
+| `higher-education-applications.write` | Create, update and delete Higher education applications |
+| `higher-education-institutions.read` | Read Higher education institutions |
+| `higher-education-institutions.write` | Create, update and delete Higher education institutions |
+| `higher-education-majors.read` | Read Higher education majors |
+| `higher-education-majors.write` | Create, update and delete Higher education majors |
+| `higher-education-reference-components.read` | Read Higher education reference components |
+| `higher-education-reference-components.write` | Create, update and delete Higher education reference components |
+| `higher-education-references.read` | Read Higher education references |
+| `higher-education-references.write` | Create, update and delete Higher education references |
+| `higher-education-staffs.read` | Read Higher education staffs |
+| `higher-education-staffs.write` | Create, update and delete Higher education staffs |
+| `higher-education-students.read` | Read Higher education students |
+| `higher-education-students.write` | Create, update and delete Higher education students |
+| `hooks.read` | Read Hooks |
+| `hooks.write` | Create, update and delete Hooks |
+| `housepoints.read` | Read any of the 3 housepoints resources (House Point Categories, House Points, Student House Points) |
+| `housepoints.write` | Create, update and delete any of the 3 writable housepoints resources (House Point Categories, House Points, Student House Points) |
+| `i18ns.read` | Read Languages |
+| `ib-diploma-cas-commitments.read` | Read Ib diploma cas commitments |
+| `ib-diploma-cas-commitments.write` | Create, update and delete Ib diploma cas commitments |
+| `ib-diploma-cas-interviews.read` | Read Ib diploma cas interviews |
+| `ib-diploma-cas-interviews.write` | Create, update and delete Ib diploma cas interviews |
+| `ib-diploma-cas-reflections.read` | Read Ib diploma cas reflections |
+| `ib-diploma-cas-reflections.write` | Create, update and delete Ib diploma cas reflections |
+| `ib-diploma-cas-staffs.read` | Read Ib diploma cas staffs |
+| `ib-diploma-cas-staffs.write` | Create, update and delete Ib diploma cas staffs |
+| `ib-diploma-cas-supervisor-feedbacks.read` | Read Ib diploma cas supervisor feedbacks |
+| `ib-diploma-cas-supervisor-feedbacks.write` | Create, update and delete Ib diploma cas supervisor feedbacks |
+| `ib-diploma-students.read` | Read Ib diploma students |
+| `ib-diploma-students.write` | Create, update and delete Ib diploma students |
+| `ibpyp-glossaries.read` | Read Ibpyp glossaries |
+| `ibpyp-glossaries.write` | Create, update and delete Ibpyp glossaries |
+| `ibpyp-staff-teachings.read` | Read Ibpyp staff teachings |
+| `ibpyp-staff-teachings.write` | Create, update and delete Ibpyp staff teachings |
+| `ibpyp-students.read` | Read Ibpyp students |
+| `ibpyp-students.write` | Create, update and delete Ibpyp students |
+| `ibpyp-unit-master-blocks.read` | Read Ibpyp unit master blocks |
+| `ibpyp-unit-master-blocks.write` | Create, update and delete Ibpyp unit master blocks |
+| `ibpyp-unit-master-smart-blocks.read` | Read Ibpyp unit master smart blocks |
+| `ibpyp-unit-master-smart-blocks.write` | Create, update and delete Ibpyp unit master smart blocks |
+| `ibpyp-unit-masters.read` | Read Ibpyp unit masters |
+| `ibpyp-unit-masters.write` | Create, update and delete Ibpyp unit masters |
+| `ibpyp-unit-working-blocks.read` | Read Ibpyp unit working blocks |
+| `ibpyp-unit-working-blocks.write` | Create, update and delete Ibpyp unit working blocks |
+| `ibpyp-unit-working-classes.read` | Read Ibpyp unit working classes |
+| `ibpyp-unit-working-classes.write` | Create, update and delete Ibpyp unit working classes |
+| `ibpyp-unit-working-smart-blocks.read` | Read Ibpyp unit working smart blocks |
+| `ibpyp-unit-working-smart-blocks.write` | Create, update and delete Ibpyp unit working smart blocks |
+| `ibpyp-unit-workings.read` | Read Ibpyp unit workings |
+| `ibpyp-unit-workings.write` | Create, update and delete Ibpyp unit workings |
+| `in-archives.read` | Read In archives |
+| `in-archives.write` | Create, update and delete In archives |
+| `in-assistants.read` | Read In assistants |
+| `in-assistants.write` | Create, update and delete In assistants |
+| `in-descriptors.read` | Read In descriptors |
+| `in-descriptors.write` | Create, update and delete In descriptors |
+| `in-investigation-contributions.read` | Read In investigation contributions |
+| `in-investigation-contributions.write` | Create, update and delete In investigation contributions |
+| `in-investigations.read` | Read In investigations |
+| `in-investigations.write` | Create, update and delete In investigations |
+| `individualneeds.read` | Read any of the 2 individualneeds resources (Individual Needs, Individual Needs Descriptors) |
+| `individualneeds.write` | Create, update and delete any of the 2 writable individualneeds resources (Individual Needs, Individual Needs Descriptors) |
+| `info-grid-entries.read` | Read Info grid entries |
+| `info-grid-entries.write` | Create, update and delete Info grid entries |
+| `internal-assessment-columns.read` | Read Internal assessment columns |
+| `internal-assessment-columns.write` | Create, update and delete Internal assessment columns |
+| `internal-assessment-entries.read` | Read Internal assessment entries |
+| `internal-assessment-entries.write` | Create, update and delete Internal assessment entries |
+| `languages.read` | Read Languages |
+| `languages.write` | Create, update and delete Languages |
+| `library-shelf-items.read` | Read Library shelf items |
+| `library-shelf-items.write` | Create, update and delete Library shelf items |
+| `library-shelfs.read` | Read Library shelfs |
+| `library-shelfs.write` | Create, update and delete Library shelfs |
+| `library-types.read` | Read Library types |
+| `library-types.write` | Create, update and delete Library types |
+| `library.read` | Read any of the 2 library resources (Library Events, Library Items) |
+| `library.write` | Create, update and delete any of the 2 writable library resources (Library Events, Library Items) |
+| `logs.read` | Read Logs |
+| `logs.write` | Create, update and delete Logs |
+| `markbook-targets.read` | Read Markbook targets |
+| `markbook-targets.write` | Create, update and delete Markbook targets |
+| `markbook-weights.read` | Read Markbook weights |
+| `markbook-weights.write` | Create, update and delete Markbook weights |
+| `markbook.read` | Read any of the 2 markbook resources (Markbook Columns, Markbook Entries) |
+| `markbook.write` | Create, update and delete any of the 2 writable markbook resources (Markbook Columns, Markbook Entries) |
+| `mastery-transcript-credit-mentors.read` | Read Mastery transcript credit mentors |
+| `mastery-transcript-credit-mentors.write` | Create, update and delete Mastery transcript credit mentors |
+| `mastery-transcript-credits.read` | Read Mastery transcript credits |
+| `mastery-transcript-credits.write` | Create, update and delete Mastery transcript credits |
+| `mastery-transcript-domains.read` | Read Mastery transcript domains |
+| `mastery-transcript-domains.write` | Create, update and delete Mastery transcript domains |
+| `mastery-transcript-journey-logs.read` | Read Mastery transcript journey logs |
+| `mastery-transcript-journey-logs.write` | Create, update and delete Mastery transcript journey logs |
+| `mastery-transcript-journeys.read` | Read Mastery transcript journeys |
+| `mastery-transcript-journeys.write` | Create, update and delete Mastery transcript journeys |
+| `mastery-transcript-opportunities.read` | Read Mastery transcript opportunities |
+| `mastery-transcript-opportunities.write` | Create, update and delete Mastery transcript opportunities |
+| `mastery-transcript-opportunity-credits.read` | Read Mastery transcript opportunity credits |
+| `mastery-transcript-opportunity-credits.write` | Create, update and delete Mastery transcript opportunity credits |
+| `mastery-transcript-opportunity-mentors.read` | Read Mastery transcript opportunity mentors |
+| `mastery-transcript-opportunity-mentors.write` | Create, update and delete Mastery transcript opportunity mentors |
+| `mastery-transcript-transcripts.read` | Read Mastery transcript transcripts |
+| `mastery-transcript-transcripts.write` | Create, update and delete Mastery transcript transcripts |
+| `medical-conditions-2.read` | Read Medical conditions 2 |
+| `medical-conditions-2.write` | Create, update and delete Medical conditions 2 |
+| `medical.read` | Read any of the 2 medical resources (Medical Conditions, Medical Records) |
+| `medical.write` | Create, update and delete any of the 2 writable medical resources (Medical Conditions, Medical Records) |
+| `meet-the-teacher-bookings.read` | Read Meet the teacher bookings |
+| `meet-the-teacher-bookings.write` | Create, update and delete Meet the teacher bookings |
+| `meet-the-teacher-custom-groupses.read` | Read Meet the teacher custom groupses |
+| `meet-the-teacher-custom-groupses.write` | Create, update and delete Meet the teacher custom groupses |
+| `meet-the-teacher-logins.read` | Read Meet the teacher logins |
+| `meet-the-teacher-logins.write` | Create, update and delete Meet the teacher logins |
+| `messaging.read` | Read any of the 3 messaging resources (Delivery Log, Message Templates, Scheduled Messages) |
+| `messaging.write` | Create, update and delete any of the 3 writable messaging resources (Delivery Log, Message Templates, Scheduled Messages) |
+| `messenger-canned-responses.read` | Read Messenger canned responses |
+| `messenger-canned-responses.write` | Create, update and delete Messenger canned responses |
+| `messenger-mailing-list-recipients.read` | Read Messenger mailing list recipients |
+| `messenger-mailing-list-recipients.write` | Create, update and delete Messenger mailing list recipients |
+| `messenger-mailing-lists.read` | Read Messenger mailing lists |
+| `messenger-mailing-lists.write` | Create, update and delete Messenger mailing lists |
+| `messenger-targets.read` | Read Messenger targets |
+| `messenger-targets.write` | Create, update and delete Messenger targets |
+| `messenger.read` | Read any of the 6 messenger resources (Chat Attachments, Chat Messages, Chat Participants, Chats, Message Receipts, Messages) |
+| `messenger.write` | Create, update and delete any of the 6 writable messenger resources (Chat Attachments, Chat Messages, Chat Participants, Chats, Message Receipts, Messages) |
+| `notifications.read` | Read any of the 4 notifications resources (Notification Events, Notification Listeners, Notification Templates, Notifications) |
+| `notifications.write` | Create, update and delete any of the 4 writable notifications resources (Notification Events, Notification Listeners, Notification Templates, Notifications) |
+| `payments.read` | Read Payments |
+| `payments.write` | Create, update and delete Payments |
+| `pd.read` | Read Professional Development Requests |
+| `pd.write` | Create, update and delete Professional Development Requests |
+| `person-medical-condition-updates.read` | Read Person medical condition updates |
+| `person-medical-condition-updates.write` | Create, update and delete Person medical condition updates |
+| `person-medical-updates.read` | Read Person medical updates |
+| `person-medical-updates.write` | Create, update and delete Person medical updates |
+| `person-photos.read` | Read Person photos |
+| `person-photos.write` | Create, update and delete Person photos |
+| `person-resets.read` | Read Person resets |
+| `person-resets.write` | Create, update and delete Person resets |
+| `person-status-logs.read` | Read Person status logs |
+| `person-status-logs.write` | Create, update and delete Person status logs |
+| `person-updates.read` | Read Person updates |
+| `person-updates.write` | Create, update and delete Person updates |
+| `personal-document-types.read` | Read Personal document types |
+| `personal-document-types.write` | Create, update and delete Personal document types |
+| `planner-entry-discusses.read` | Read Planner entry discusses |
+| `planner-entry-discusses.write` | Create, update and delete Planner entry discusses |
+| `planner-entry-guests.read` | Read Planner entry guests |
+| `planner-entry-guests.write` | Create, update and delete Planner entry guests |
+| `planner-entry-homeworks.read` | Read Planner entry homeworks |
+| `planner-entry-homeworks.write` | Create, update and delete Planner entry homeworks |
+| `planner-entry-outcomes.read` | Read Planner entry outcomes |
+| `planner-entry-outcomes.write` | Create, update and delete Planner entry outcomes |
+| `planner-entry-student-homeworks.read` | Read Planner entry student homeworks |
+| `planner-entry-student-homeworks.write` | Create, update and delete Planner entry student homeworks |
+| `planner-entry-student-trackers.read` | Read Planner entry student trackers |
+| `planner-entry-student-trackers.write` | Create, update and delete Planner entry student trackers |
+| `planner-parent-weekly-email-summaries.read` | Read Planner parent weekly email summaries |
+| `planner-parent-weekly-email-summaries.write` | Create, update and delete Planner parent weekly email summaries |
+| `planner.read` | Read Lessons |
+| `planner.write` | Create, update and delete Lessons |
+| `policies-policies.read` | Read Policies policies |
+| `policies-policies.write` | Create, update and delete Policies policies |
+| `professional-development-portfolio-tags.read` | Read Professional development portfolio tags |
+| `professional-development-portfolio-tags.write` | Create, update and delete Professional development portfolio tags |
+| `professional-development-portfolios.read` | Read Professional development portfolios |
+| `professional-development-portfolios.write` | Create, update and delete Professional development portfolios |
+| `professional-development-request-approverses.read` | Read Professional development request approverses |
+| `professional-development-request-approverses.write` | Create, update and delete Professional development request approverses |
+| `professional-development-request-costs.read` | Read Professional development request costs |
+| `professional-development-request-costs.write` | Create, update and delete Professional development request costs |
+| `professional-development-request-dayses.read` | Read Professional development request dayses |
+| `professional-development-request-dayses.write` | Create, update and delete Professional development request dayses |
+| `professional-development-request-logs.read` | Read Professional development request logs |
+| `professional-development-request-logs.write` | Create, update and delete Professional development request logs |
+| `professional-development-request-persons.read` | Read Professional development request persons |
+| `professional-development-request-persons.write` | Create, update and delete Professional development request persons |
+| `professional-development-resource-tags.read` | Read Professional development resource tags |
+| `professional-development-resource-tags.write` | Create, update and delete Professional development resource tags |
+| `professional-development-resources.read` | Read Professional development resources |
+| `professional-development-resources.write` | Create, update and delete Professional development resources |
+| `query-builder-favourites.read` | Read Query builder favourites |
+| `query-builder-favourites.write` | Create, update and delete Query builder favourites |
+| `query-builder-queries.read` | Read Query builder queries |
+| `query-builder-queries.write` | Create, update and delete Query builder queries |
+| `report-archive-entries.read` | Read Report archive entries |
+| `report-archive-entries.write` | Create, update and delete Report archive entries |
+| `report-archives.read` | Read Report archives |
+| `report-archives.write` | Create, update and delete Report archives |
+| `report-prototype-sections.read` | Read Report prototype sections |
+| `report-prototype-sections.write` | Create, update and delete Report prototype sections |
+| `report-template-fonts.read` | Read Report template fonts |
+| `report-template-fonts.write` | Create, update and delete Report template fonts |
+| `report-template-sections.read` | Read Report template sections |
+| `report-template-sections.write` | Create, update and delete Report template sections |
+| `report-templates.read` | Read Report templates |
+| `report-templates.write` | Create, update and delete Report templates |
+| `reporting-accesses.read` | Read Reporting accesses |
+| `reporting-accesses.write` | Create, update and delete Reporting accesses |
+| `reporting-criteria-types.read` | Read Reporting criteria types |
+| `reporting-criteria-types.write` | Create, update and delete Reporting criteria types |
+| `reporting-criterias.read` | Read Reporting criterias |
+| `reporting-criterias.write` | Create, update and delete Reporting criterias |
+| `reporting-cycles.read` | Read Reporting cycles |
+| `reporting-cycles.write` | Create, update and delete Reporting cycles |
+| `reporting-progresses.read` | Read Reporting progresses |
+| `reporting-progresses.write` | Create, update and delete Reporting progresses |
+| `reporting-proofs.read` | Read Reporting proofs |
+| `reporting-proofs.write` | Create, update and delete Reporting proofs |
+| `reporting-scopes.read` | Read Reporting scopes |
+| `reporting-scopes.write` | Create, update and delete Reporting scopes |
+| `reporting-values.read` | Read Reporting values |
+| `reporting-values.write` | Create, update and delete Reporting values |
+| `reports.read` | Read Reports |
+| `reports.write` | Create, update and delete Reports |
+| `resource-tags.read` | Read Resource tags |
+| `resource-tags.write` | Create, update and delete Resource tags |
+| `resources.read` | Read Resources |
+| `resources.write` | Create, update and delete Resources |
+| `roles.read` | Read Roles |
+| `roles.write` | Create, update and delete Roles |
+| `rubric-cells.read` | Read Rubric cells |
+| `rubric-cells.write` | Create, update and delete Rubric cells |
+| `rubric-columns.read` | Read Rubric columns |
+| `rubric-columns.write` | Create, update and delete Rubric columns |
+| `rubric-entries.read` | Read Rubric entries |
+| `rubric-entries.write` | Create, update and delete Rubric entries |
+| `rubric-rows.read` | Read Rubric rows |
+| `rubric-rows.write` | Create, update and delete Rubric rows |
+| `school.read` | Read any of the 9 school resources (Form Groups, Grade Scale Grades, Grade Scales, Houses, School Terms, School Years, Spaces, Special Days, Year Groups) |
+| `school.write` | Create, update and delete any of the 9 writable school resources (Form Groups, Grade Scale Grades, Grade Scales, Houses, School Terms, School Years, Spaces, Special Days, Year Groups) |
+| `space-persons.read` | Read Space persons |
+| `space-persons.write` | Create, update and delete Space persons |
+| `staff-absence-types.read` | Read Staff absence types |
+| `staff-absence-types.write` | Create, update and delete Staff absence types |
+| `staff-application-form-files.read` | Read Staff application form files |
+| `staff-application-form-files.write` | Create, update and delete Staff application form files |
+| `staff-application-forms.read` | Read Staff application forms |
+| `staff-application-forms.write` | Create, update and delete Staff application forms |
+| `staff-coverage-dates.read` | Read Staff coverage dates |
+| `staff-coverage-dates.write` | Create, update and delete Staff coverage dates |
+| `staff-duty-persons.read` | Read Staff duty persons |
+| `staff-duty-persons.write` | Create, update and delete Staff duty persons |
+| `staff-job-openings.read` | Read Staff job openings |
+| `staff-job-openings.write` | Create, update and delete Staff job openings |
+| `staff-updates.read` | Read Staff updates |
+| `staff-updates.write` | Create, update and delete Staff updates |
+| `staff.absence.read` | Read any of the 3 staff.absence resources (Staff Absence Dates, Staff Absences, Staff Coverage) |
+| `staff.absence.write` | Create, update and delete any of the 3 writable staff.absence resources (Staff Absence Dates, Staff Absences, Staff Coverage) |
+| `staff.contracts.read` | Read Staff Contracts |
+| `staff.contracts.write` | Create, update and delete Staff Contracts |
+| `staff.duties.read` | Read Staff Duties |
+| `staff.duties.write` | Create, update and delete Staff Duties |
+| `staff.read` | Read Staff |
+| `staff.write` | Create, update and delete Staff |
+| `stream-categories.read` | Read Stream categories |
+| `stream-categories.write` | Create, update and delete Stream categories |
+| `stream-category-vieweds.read` | Read Stream category vieweds |
+| `stream-category-vieweds.write` | Create, update and delete Stream category vieweds |
+| `stream-post-attachments.read` | Read Stream post attachments |
+| `stream-post-attachments.write` | Create, update and delete Stream post attachments |
+| `stream-post-tags.read` | Read Stream post tags |
+| `stream-post-tags.write` | Create, update and delete Stream post tags |
+| `stream.read` | Read Stream Posts |
+| `stream.write` | Create, update and delete Stream Posts |
+| `student-note-categories.read` | Read Student note categories |
+| `student-note-categories.write` | Create, update and delete Student note categories |
+| `student-notes.read` | Read Student notes |
+| `student-notes.write` | Create, update and delete Student notes |
+| `students.read` | Read Students |
+| `students.write` | Create, update and delete Students |
+| `substitutes.read` | Read Substitutes |
+| `substitutes.write` | Create, update and delete Substitutes |
+| `system.read` | Read any of the 5 system resources (Actions, Custom Fields, Modules, Permissions, Settings) |
+| `system.write` | Create, update and delete any of the 5 writable system resources (Actions, Custom Fields, Modules, Permissions, Settings) |
+| `themes.read` | Read Themes |
+| `themes.write` | Create, update and delete Themes |
+| `timetable.read` | Read any of the 5 timetable resources (Timetable Dates, Timetable Days, Timetable Periods, Timetable Slots, Timetables) |
+| `timetable.write` | Create, update and delete any of the 5 writable timetable resources (Timetable Dates, Timetable Days, Timetable Periods, Timetable Slots, Timetables) |
+| `trip-planner-approverses.read` | Read Trip planner approverses |
+| `trip-planner-approverses.write` | Create, update and delete Trip planner approverses |
+| `trip-planner-cost-breakdowns.read` | Read Trip planner cost breakdowns |
+| `trip-planner-cost-breakdowns.write` | Create, update and delete Trip planner cost breakdowns |
+| `trip-planner-request-covers.read` | Read Trip planner request covers |
+| `trip-planner-request-covers.write` | Create, update and delete Trip planner request covers |
+| `trip-planner-request-logs.read` | Read Trip planner request logs |
+| `trip-planner-request-logs.write` | Create, update and delete Trip planner request logs |
+| `trip-planner-risk-templateses.read` | Read Trip planner risk templateses |
+| `trip-planner-risk-templateses.write` | Create, update and delete Trip planner risk templateses |
+| `trips.read` | Read any of the 3 trips resources (Trip Days, Trip Participants, Trips) |
+| `trips.write` | Create, update and delete any of the 3 writable trips resources (Trip Days, Trip Participants, Trips) |
+| `tt-columns.read` | Read Tt columns |
+| `tt-columns.write` | Create, update and delete Tt columns |
+| `tt-day-row-class-exceptions.read` | Read Tt day row class exceptions |
+| `tt-day-row-class-exceptions.write` | Create, update and delete Tt day row class exceptions |
+| `tt-imports.read` | Read Tt imports |
+| `tt-imports.write` | Create, update and delete Tt imports |
+| `tt-space-bookings.read` | Read Tt space bookings |
+| `tt-space-bookings.write` | Create, update and delete Tt space bookings |
+| `tt-space-changes.read` | Read Tt space changes |
+| `tt-space-changes.write` | Create, update and delete Tt space changes |
+| `unit-blocks.read` | Read Unit blocks |
+| `unit-blocks.write` | Create, update and delete Unit blocks |
+| `unit-class-blocks.read` | Read Unit class blocks |
+| `unit-class-blocks.write` | Create, update and delete Unit class blocks |
+| `unit-classes.read` | Read Unit classes |
+| `unit-classes.write` | Create, update and delete Unit classes |
+| `unit-outcomes.read` | Read Unit outcomes |
+| `unit-outcomes.write` | Create, update and delete Unit outcomes |
+| `units.read` | Read Units |
+| `units.write` | Create, update and delete Units |
+| `username-formats.read` | Read Username formats |
+| `username-formats.write` | Create, update and delete Username formats |
+| `users.read` | Read Users |
+| `users.write` | Create, update and delete Users |
+| `visual-assessment-attainments.read` | Read Visual assessment attainments |
+| `visual-assessment-attainments.write` | Create, update and delete Visual assessment attainments |
+| `visual-assessment-guides.read` | Read Visual assessment guides |
+| `visual-assessment-guides.write` | Create, update and delete Visual assessment guides |
+| `visual-assessment-terms.read` | Read Visual assessment terms |
+| `visual-assessment-terms.write` | Create, update and delete Visual assessment terms |
+| `wellbeing.read` | Read Alert Levels |
+| `wellbeing.write` | Create, update and delete Alert Levels |
+| `workflows.read` | Read any of the 4 workflows resources (Workflow Audit Trail, Workflow Definitions, Workflow Instance Steps, Workflow Instances) |
+| `workflows.write` | Create, update and delete any of the 4 writable workflows resources (Workflow Audit Trail, Workflow Definitions, Workflow Instance Steps, Workflow Instances) |
+
+---
+
+## Meta endpoints
+
+| Endpoint | Auth | Description |
+|----------|------|-------------|
+| `GET /` | — | API index with links |
+| `GET /health` | — | Service health check |
+| `GET /scopes` | — | All scopes an API key can hold |
+| `GET /resources` | — | Every available resource with methods and filters |
+| `GET /events` | — | All webhook event types |
+| `GET /stats` | yes | School-wide counts and API usage |
+| `GET /dashboard` | yes | Current-user dashboard data |
+| `GET /permissions` | yes | Actions the current user can perform |
+| `GET /analytics` | yes | Request analytics and trends (pass `?days=7`) |
+| `GET /openapi.json` | yes | This OpenAPI 3 specification |
+
+---
+
+## HTTP method summary
+
+| Method | Meaning |
+|--------|---------|
+| `GET` | Read a collection or a single record |
+| `POST` | Create a record (or bulk create via `/bulk`) |
+| `PATCH` | Partial update — only the fields sent are changed |
+| `PUT` | Full replace — the entire record is overwritten |
+| `DELETE` | Remove a record |
+| `OPTIONS` | CORS preflight |
+
+---
+
+_Generated from the live resource registry by `modules/TawasulCore/src/Command/generate-openapi.php`._

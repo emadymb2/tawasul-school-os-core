@@ -1,0 +1,73 @@
+details:
+    type: libraryItemEventReturn
+    name: Library Item Event Return
+    table: tawasulLibraryItemEvent
+    modes: { update: true, insert: false, export: true }
+access:
+    module: Library
+    action: Manage Catalog
+fields:
+    id: 
+        name: "School ID"
+        desc: ""
+        args: { filter: string, required: true }
+    tawasulLibraryItemID: 
+        name: "ID"
+        desc: "tawasulLibraryItemID"
+        args: { filter: string, required: true, linked: id, readonly: [ tawasulLibraryItem ] } 
+        relationship: { table: tawasulLibraryItem, key: tawasulLibraryItemID, field: id }
+    tawasulPersonIDStatusResponsible:
+        name: "Responsible User"
+        desc: "Username or Email (if unique)"
+        args: { filter: nospaces, required: true }
+        relationship: { table: tawasulPerson, key: tawasulPersonID, field: studentID|username|email  }
+    tawasulPersonIDIn:
+        name: "Created By"
+        desc: "Username or Email (if unique)"
+        args: { filter: nospaces, required: true, custom: true }
+        relationship: { table: tawasulPerson, key: tawasulPersonID, field: studentID|username|email  }
+    type:
+        name: "Event Type"
+        desc: ""
+        value: "Loan"
+        args: { filter: string, hidden: true }
+    status:
+        name: "Current Status"
+        desc: ""
+        value: "Available"
+        args: { filter: string, hidden: true }
+    timestampReturn:
+        name: "Timestamp"
+        desc: ""
+        args: { filter: timestamp, hidden: true, function: timestamp }
+    tawasulLibraryItemEvent.status:
+        name: "New Status"
+        desc: ""
+        value: "Returned"
+        args: { filter: string, hidden: true, readonly: [ tawasulLibraryItem ] }
+    tawasulLibraryItemEventID: 
+        name: "tawasulLibraryItemEventID"
+        desc: ""
+        value: "On Loan"
+        args: { filter: string, required: true, hidden: true } 
+        relationship: { table: tawasulLibraryItemEvent, key: tawasulLibraryItemEventID, field: [ status, tawasulLibraryItemID, tawasulPersonIDStatusResponsible, type ] }
+tables:
+    tawasulLibraryItem:
+        primaryKey:
+            tawasulLibraryItemID
+        uniqueKeys:
+            - [ id ]
+        fields:
+            - id
+            - status
+    tawasulLibraryItemEvent:
+        primaryKey:
+            tawasulLibraryItemEventID
+        uniqueKeys:
+            - [ tawasulLibraryItemEventID ]
+        fields:
+            - tawasulLibraryItemEvent.status
+            - tawasulLibraryItemEventID
+            - tawasulLibraryItemID
+            - timestampReturn
+            - tawasulPersonIDIn

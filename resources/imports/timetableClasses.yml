@@ -1,0 +1,53 @@
+details:
+    type: timetableClasses
+    name: Classes in Period
+    table: tawasulTTDayRowClass
+    modes: { update: true, insert: true, export: true }
+access:
+    module: Timetable Admin
+    action: Manage Timetables
+primaryKey:
+    tawasulTTDayRowClassID
+uniqueKeys:
+    - [ tawasulCourseClassID, tawasulTTDayID, tawasulTTColumnRowID ]
+table:
+    tawasulSchoolYearID:
+        name: "School Year"
+        desc: "School year name, as set in School Admin. Must already exist."
+        args: { filter: schoolyear, required: true, custom: true, readonly: true }
+        relationship: { table: tawasulSchoolYear, key: tawasulSchoolYearID, field: name  }
+    tawasulTTID:
+        name: "Timetable"
+        desc: "Short Name"
+        args: { filter: string, required: true, custom: true, readonly: true }
+        relationship: { table: tawasulTT, key: tawasulTTID, field: [nameShort, tawasulSchoolYearID]  }
+    tawasulTTColumnID:
+        name: "Timetable Column"
+        desc: "Short Name"
+        args: { filter: string, required: true, custom: true, readonly: true }
+        relationship: { table: tawasulTTColumn, key: tawasulTTColumnID, field: nameShort  }
+    tawasulCourseID:
+        name: "Course"
+        desc: "Short Name"
+        args: { filter: string, required: true, readonly: true }
+        relationship: { table: tawasulCourse, key: tawasulCourseID, field: [ nameShort, tawasulSchoolYearID ]  }
+    tawasulCourseClassID:
+        name: "Class"
+        desc: "Short Name"
+        args: { filter: string, required: true }
+        relationship: { table: tawasulCourseClass, key: tawasulCourseClassID, field: [ nameShort, tawasulCourseID ]  }
+    tawasulTTDayID:
+        name: "Timetable Day"
+        desc: "Short Name"
+        args: { filter: string, required: true, custom: true }
+        relationship: { table: tawasulTTDay, key: tawasulTTDayID, field: [ nameShort, tawasulTTColumnID, tawasulTTID ]  }
+    tawasulTTColumnRowID:
+        name: "Column Row"
+        desc: "Short Name"
+        args: { filter: string, required: true, custom: true }
+        relationship: { table: tawasulTTColumnRow, key: tawasulTTColumnRowID, field: [ nameShort, tawasulTTColumnID ]  }
+    tawasulSpaceID:
+        name: "Facility"
+        desc: "Name"
+        args: { filter: string, required: false, custom: true }
+        relationship: { table: tawasulSpace, key: tawasulSpaceID, field: name }

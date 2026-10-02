@@ -1,0 +1,81 @@
+details:
+    type: studentAlerts
+    category: Alerts
+    name: Student Alerts
+    table: tawasulAlert
+    modes: { update: true, insert: true, export: true }
+access:
+    module: Student Alerts
+    action: Manage Student Alerts_all
+primaryKey:
+    tawasulAlertID
+table:
+    tawasulSchoolYearID:
+        name: "School Year"
+        desc: "School year name, as set in School Admin. Must already exist."
+        args: { filter: schoolyear, required: true, custom: true }
+        relationship: { table: tawasulSchoolYear, key: tawasulSchoolYearID, field: name  }
+    tawasulPersonID:
+        name: "Student Username/Email"
+        desc: "Username or Email (if unique)"
+        args: { filter: nospaces, required: true, custom: true }
+        relationship: { table: tawasulPerson, key: tawasulPersonID, field: username|email }
+    level:
+        name: "Alert Level"
+        desc: "High, Medium or Low"
+        args: { filter: string, custom: true }
+    tawasulAlertLevelID:
+        name: "Level ID"
+        desc: ""
+        args: { filter: string, linked: level }
+        relationship: { table: tawasulAlertLevel, key: tawasulAlertLevelID, field: name }
+    type:
+        name: "Alert Type"
+        desc: ""
+        args: { filter: string, required: true, custom: true }
+    tawasulAlertTypeID:
+        name: "Type ID"
+        desc: ""
+        args: { filter: string, required: true, linked: type }
+        relationship: { table: tawasulAlertType, key: tawasulAlertTypeID, field: name }
+    tawasulCourseID:
+        name: "Course"
+        desc: "Short Name"
+        args: { filter: string, readonly: true }
+        relationship: { table: tawasulCourse, key: tawasulCourseID, field: [ nameShort, tawasulSchoolYearID ]  }
+    tawasulCourseClassID:
+        name: "Class"
+        desc: "Short Name"
+        args: { filter: string }
+        relationship: { table: tawasulCourseClass, key: tawasulCourseClassID, field: [ nameShort, tawasulCourseID ] }
+    context:
+        name: "Context"
+        desc: ""
+        value: "Manual"
+        args: { filter: string, hidden: true }
+    status:
+        name: "Status"
+        desc: ""
+        value: "Approved"
+        args: { filter: string, hidden: true }
+    dateStart: 
+        name: "Start Date"
+        desc: "Must be unique. Format: YYYY-MM-DD"
+        args: { filter: date }
+    dateEnd: 
+        name: "End Date"
+        desc: "Must be unique. Format: YYYY-MM-DD"
+        args: { filter: date }
+    comment:
+        name: "Comment"
+        desc: ""
+        args: { filter: string }
+    tawasulPersonIDCreated:
+        name: "Recorded By"
+        desc: "Username or Email (if unique)"
+        args: { filter: nospaces, custom: true}
+        relationship: { table: tawasulPerson, key: tawasulPersonID, field: username|email }
+    notesStatus:
+        name: "Notes"
+        desc: ""
+        args: { filter: string }

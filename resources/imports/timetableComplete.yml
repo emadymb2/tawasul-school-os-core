@@ -1,0 +1,131 @@
+details:
+    type: timetableComplete
+    name: Timetable - Complete
+    table: tawasulTTDayRowClass
+    modes: { update: true, insert: true, export: true }
+access:
+    module: Timetable Admin
+    action: Manage Timetables
+primaryKey:
+    tawasulTTDayRowClassID
+uniqueKeys:
+    - [ tawasulCourseClassID, tawasulTTDayID, tawasulTTColumnRowID ]
+fields:
+    tawasulSchoolYearID:
+        name: "School Year"
+        desc: "School year name, as set in School Admin. Must already exist."
+        args: { filter: schoolyear, required: true, custom: true, readonly: [tawasulCourseClass, tawasulCourseClassPerson, tawasulTTDayRowClass] }
+        relationship: { table: tawasulSchoolYear, key: tawasulSchoolYearID, field: name  }
+    tawasulTTID:
+        name: "Timetable"
+        desc: "Short Name"
+        args: { filter: string, required: true, custom: true, readonly: true }
+        relationship: { table: tawasulTT, key: tawasulTTID, field: [nameShort, tawasulSchoolYearID]  }
+    tawasulCourse.nameShort:
+        name: "Course Short Name"
+        desc: "e.g. DR10 for Year 10 Drama"
+        args: { filter: string, required: true, custom: true }
+    tawasulCourse.name:
+        name: "Course"
+        desc: "Name"
+        args: { filter: string, linked: tawasulCourse.nameShort }
+    tawasulCourseID:
+        name: "Course"
+        desc: "ID"
+        args: { filter: string, linked: tawasulCourse.nameShort, readonly: [ tawasulCourseClassPerson, tawasulTTDayRowClass ] }
+        relationship: { table: tawasulCourse, key: tawasulCourseID, field: [ nameShort, tawasulSchoolYearID ]  }
+    tawasulYearGroupIDList:
+        name: "Year Groups"
+        desc: ""
+        args: { filter: string, linked: tawasulTTID }
+        relationship: { table: tawasulTT, key: tawasulYearGroupIDList, field: [ tawasulTTID ]  }
+    tawasulCourseClass.nameShort:
+        name: "Class Short Name"
+        desc: "e.g 1 for DR10.1"
+        args: { filter: string, required: true, custom: true }
+    tawasulCourseClass.name:
+        name: "Class"
+        desc: "Name"
+        args: { filter: string, linked: tawasulCourseClass.nameShort }
+    tawasulCourseClassID:
+        name: "Class"
+        desc: "ID"
+        args: { filter: string, linked: tawasulCourseClass.nameShort }
+        relationship: { table: tawasulCourseClass, key: tawasulCourseClassID, field: [ nameShort, tawasulCourseID ]  }
+    tawasulTTDayID:
+        name: "Day Name"
+        desc: "as used in the target timetable"
+        args: { filter: string, required: true, custom: true }
+        relationship: { table: tawasulTTDay, key: tawasulTTDayID, field: [ name, tawasulTTID ]  }
+    tawasulTTColumnID:
+        name: "Timetable Column"
+        desc: "Linked"
+        args: { filter: string, required: true, custom: true, readonly: true, linked: tawasulTTDayID }
+        relationship: { table: tawasulTTColumn, key: tawasulTTColumnID, join: tawasulTTDay, on: [tawasulTTColumnID, tawasulTTColumnID], field: [ tawasulTTDayID ] }
+    tawasulTTColumnRowID:
+        name: "Row Name"
+        desc: "as used in the target timetable"
+        args: { filter: string, required: true, custom: true }
+        relationship: { table: tawasulTTColumnRow, key: tawasulTTColumnRowID, field: [ name, tawasulTTColumnID ]  }
+    tawasulPersonID:
+        name: "Teacher"
+        desc: "Username or Email (if unique)"
+        args: { filter: string, required: true, custom: true }
+        relationship: { table: tawasulPerson, key: tawasulPersonID, field: username|email  }
+    role:
+        name: "Role"
+        desc: ""
+        value: "Teacher"
+        args: { filter: string, hidden: true }
+    tawasulSpaceID:
+        name: "Space Name"
+        desc: ""
+        args: { filter: string, required: true, custom: true }
+        relationship: { table: tawasulSpace, key: tawasulSpaceID, field: name }
+tables:
+    tawasulCourse:
+        primaryKey:
+            tawasulCourseID
+        uniqueKeys:
+            - [ tawasulSchoolYearID, tawasulCourse.name ]
+            - [ tawasulSchoolYearID, tawasulCourse.nameShort ]
+        fields:
+            - tawasulSchoolYearID
+            - tawasulTTID
+            - tawasulCourse.name
+            - tawasulCourse.nameShort
+            - tawasulYearGroupIDList
+    tawasulCourseClass:
+        primaryKey:
+            tawasulCourseClassID
+        uniqueKeys:
+            - [ tawasulCourseID, tawasulCourseClass.nameShort ]
+        fields:
+            - tawasulSchoolYearID
+            - tawasulCourseID
+            - tawasulCourseClass.name
+            - tawasulCourseClass.nameShort
+    tawasulCourseClassPerson:
+        primaryKey:
+            tawasulCourseClassPersonID
+        uniqueKeys:
+            - [ tawasulCourseClassID, tawasulPersonID ]
+        fields:
+            - tawasulSchoolYearID
+            - tawasulCourseID
+            - tawasulCourseClassID
+            - tawasulPersonID
+            - role
+    tawasulTTDayRowClass:
+        primaryKey:
+            tawasulTTDayRowClassID
+        uniqueKeys:
+            - [ tawasulCourseClassID, tawasulTTDayID, tawasulTTColumnRowID ]
+        fields:
+            - tawasulSchoolYearID
+            - tawasulTTID
+            - tawasulCourseClassID
+            - tawasulTTDayID
+            - tawasulTTColumnID
+            - tawasulTTColumnRowID
+            - tawasulSpaceID

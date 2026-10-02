@@ -1,0 +1,122 @@
+details:
+    type: reportingValuesFormGroup
+    category: Reports
+    name: Reporting Values by Form Group
+    table: tawasulReportingValue
+    modes: { update: true, insert: true, export: false }
+access:
+    module: Reports
+    action: Manage Reporting Cycles
+primaryKey:
+    tawasulReportingValueID
+uniqueKeys:
+    - tawasulPersonID
+fields:
+    tawasulSchoolYearID: 
+        name: "School Year"
+        desc: "School year name, as set in School Admin. Must already exist."
+        args: { filter: schoolyear, required: true, custom: true, readonly: [tawasulReportingProgress]  }
+        relationship: { table: tawasulSchoolYear, key: tawasulSchoolYearID, field: name  }
+    tawasulReportingCycleID: 
+        name: "Reporting Cycle"
+        desc: "Reporting Cycle name"
+        args: { filter: string, required: true, custom: true, readonly: [tawasulReportingProgress]  }
+        relationship: { table: tawasulReportingCycle, key: tawasulReportingCycleID, field: [name, tawasulSchoolYearID]  }
+    tawasulReportingScopeID: 
+        name: "Reporting Scope"
+        desc: "Reporting Scope name"
+        args: { filter: string, required: true, custom: true, readonly: [tawasulReportingValue]  }
+        relationship: { table: tawasulReportingScope, key: tawasulReportingScopeID, field: [name, tawasulReportingCycleID]  }
+    tawasulFormGroupID: 
+        name: "Form Group"
+        desc: "Short Name"
+        args: { filter: nospaces, required: true, custom: true, readonly: [tawasulReportingValue]  }
+        relationship: { table: tawasulFormGroup, key: tawasulFormGroupID, field: [nameShort, tawasulSchoolYearID]  }
+    target: 
+        name: "Criteria Target"
+        desc: ""
+        value: "Per Student"
+        args: { filter: string, required: true, custom: true, readonly: [tawasulReportingValue]  }
+    tawasulReportingCriteriaID: 
+        name: "Criteria Name"
+        desc: ""
+        args: { filter: string, required: true, custom: true, readonly: false  }
+        relationship: { table: tawasulReportingCriteria, key: tawasulReportingCriteriaID, field: [name, target, tawasulReportingScopeID, tawasulFormGroupID]  }
+    tawasulPersonIDStudent:
+        name: "Student"
+        desc: "Username or Email (if unique)"
+        args: { filter: nospaces, required: true, readonly: false  }
+        relationship: { table: tawasulPerson, key: tawasulPersonID, field: username|email  }
+    value:
+        name: "Value"
+        desc: ""
+        args: { filter: string, custom: true, readonly: false }
+    comment:
+        name: "Comment"
+        desc: ""
+        args: { filter: string, custom: true, readonly: false }
+    tawasulPersonIDCreated:
+        name: "Teacher"
+        desc: "Username or Email (if unique)"
+        args: { filter: email, custom: true, readonly: false  }
+        relationship: { table: tawasulPerson, key: tawasulPersonID, field: username|email  }
+    timestampCreated:
+        name: "Created On"
+        desc: ""
+        args: { filter: timestamp, hidden: true, function: timestamp }
+    tawasulPersonIDModified:
+        name: "Teacher"
+        desc: "Email"
+        args: { filter: email, linked: tawasulPersonIDCreated, readonly: false  }
+    timestampModified:
+        name: "Created On"
+        desc: ""
+        args: { filter: timestamp, hidden: true, function: timestamp }
+    tawasulScaleID:
+        name: "Grade Scale"
+        desc: ""
+        args: { filter: string, linked: tawasulReportingCriteriaID, readonly: [tawasulReportingValue] }
+        relationship: { table: tawasulReportingCriteria, key: tawasulReportingCriteriaID, field: [tawasulScaleID]  }
+    tawasulScaleGradeID:
+        name: "Grade Scale Grade"
+        desc: ""
+        args: { filter: string, linked: value, readonly: false }
+        relationship: { table: tawasulScaleGrade, key: tawasulScaleGradeID, field: [value, tawasulScaleID]  }
+    status: 
+        name: "Status"
+        desc: ""
+        args: { filter: string, required: true, custom: true }
+tables:
+    tawasulReportingValue: 
+        primaryKey:
+            tawasulReportingValueID
+        uniqueKeys:
+            - [tawasulReportingCriteriaID, tawasulPersonIDStudent]
+        fields:
+            - tawasulSchoolYearID
+            - tawasulReportingCycleID
+            - tawasulReportingScopeID
+            - tawasulFormGroupID
+            - target
+            - tawasulReportingCriteriaID
+            - tawasulPersonIDStudent
+            - tawasulScaleID
+            - tawasulScaleGradeID
+            - value
+            - comment
+            - tawasulPersonIDCreated
+            - timestampCreated
+            - tawasulPersonIDModified
+            - timestampModified
+    tawasulReportingProgress:
+        primaryKey:
+            tawasulReportingProgressID
+        uniqueKeys:
+            - [tawasulReportingScopeID, tawasulFormGroupID, tawasulPersonIDStudent]
+        fields:
+            - tawasulSchoolYearID
+            - tawasulReportingCycleID
+            - tawasulReportingScopeID
+            - tawasulFormGroupID
+            - tawasulPersonIDStudent
+            - status

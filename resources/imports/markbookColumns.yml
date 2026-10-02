@@ -1,0 +1,131 @@
+details:
+    type: markbookColumns
+    name: Markbook Columns
+    table: tawasulMarkbookColumn
+    modes: { update: true, insert: true, export: true }
+access:
+    module: Markbook
+    action: Edit Markbook_everything
+primaryKey:
+    tawasulMarkbookColumnID
+uniqueKeys:
+    - [ tawasulCourseClassID, name ]
+table:
+    tawasulSchoolYearID: 
+        name: "School Year"
+        desc: "School year name, as set in School Admin. Must already exist."
+        args: { filter: schoolyear, required: true, custom: true, readonly: true }
+        relationship: { table: tawasulSchoolYear, key: tawasulSchoolYearID, field: name  }
+    tawasulCourseID: 
+        name: "Course"
+        desc: "Short Name"
+        args: { filter: string, required: true, custom: true, readonly: true }
+        relationship: { table: tawasulCourse, key: tawasulCourseID, field: [ nameShort, tawasulSchoolYearID ]  }
+    tawasulCourseClassID: 
+        name: "Class"
+        desc: "Short Name"
+        args: { filter: string, required: true, custom: true }
+        relationship: { table: tawasulCourseClass, key: tawasulCourseClassID, field: [ nameShort, tawasulCourseID ]  }
+    tawasulUnitID: 
+        name: "Unit"
+        desc: "Name"
+        args: { filter: string, custom: true }
+        relationship: { table: tawasulUnit, key: tawasulUnitID, field: [ name, tawasulCourseID ]  }
+    tawasulPlannerEntryID: 
+        name: "Lesson"
+        desc: "Name"
+        args: { filter: string, custom: true }
+        relationship: { table: tawasulPlannerEntry, key: tawasulPlannerEntryID, field: [ name, tawasulCourseClassID ]  }
+    name: 
+        name: "Name"
+        desc: ""
+        args: { filter: string, required: true }
+    description: 
+        name: "Description"
+        desc: ""
+        args: { filter: string, required: true }
+    type: 
+        name: "Type"
+        desc: ""
+        args: { filter: string, required: true, custom: true }
+    date: 
+        name: "Date Added"
+        desc: ""
+        args: {filter: date, custom: true }
+    tawasulSchoolYearTermID: 
+        name: "Term Added"
+        desc: ""
+        args: {filter: string, custom: true }
+        relationship: { table: tawasulSchoolYearTerm, key: tawasulSchoolYearTermID, field: [ tawasulSchoolYearTerm.nameShort, tawasulSchoolYearID ]  }
+    attainment: 
+        name: "Assess Attainment?"
+        desc: ""
+        args: { filter: yesno, required: true, custom: true }
+    tawasulScaleIDAttainment: 
+        name: "Attainment Scale"
+        desc: "Short Name"
+        args: { filter: string, custom: true }
+        relationship: { table: tawasulScale, key: tawasulScaleID, field: nameShort  }
+    attainmentRaw: 
+        name: "Total Mark"
+        desc: ""
+        args: { filter: yesno, custom: true }
+    attainmentRawMax: 
+        name: "Attainment Total Mark"
+        desc: ""
+        args: { filter: string, custom: true }
+    attainmentWeighting: 
+        name: "Attainment Weighting"
+        desc: ""
+        args: { filter: numeric, custom: true }
+    tawasulRubricIDAttainment: 
+        name: "Attainment Rubric"
+        desc: "Name"
+        args: { filter: string, custom: true }
+        relationship: { table: tawasulRubric, key: tawasulRubricID, field: name  }
+    effort: 
+        name: "Assess Effort?"
+        desc: ""
+        args: { filter: yesno, required: true, custom: true }
+    tawasulScaleIDEffort: 
+        name: "Effort Scale"
+        desc: "Short Name"
+        args: { filter: string, custom: true }
+        relationship: { table: tawasulScale, key: tawasulScaleID, field: nameShort  }
+    tawasulRubricIDEffort: 
+        name: "Effort Rubric"
+        desc: "Name"
+        args: { filter: string, custom: true }
+        relationship: { table: tawasulRubric, key: tawasulRubricID, field: name  }
+    comment: 
+        name: "Include Comment?"
+        desc: ""
+        args: { filter: yesno, required: true, custom: true }
+    uploadedResponse: 
+        name: "Include Uploaded Response?"
+        desc: ""
+        args: { filter: yesno, required: true, custom: true }
+    viewableStudents: 
+        name: "Viewable to Students"
+        desc: ""
+        args: { filter: yesno, required: true, custom: true }
+    viewableParents: 
+        name: "Viewable to Parents"
+        desc: ""
+        args: { filter: yesno, required: true, custom: true }
+    completeDate: 
+        name: "Go Live Date"
+        desc: "Column is hidden until date is reached."
+        args: {filter: date, custom: true }
+    complete: 
+        name: "Completed?"
+        desc: ""
+        args: { filter: yesno, custom: true }
+    columnColor: 
+        name: "Column Color"
+        desc: "Hex code with leading #"
+        args: { filter: color, custom: true }
+    sequenceNumber: 
+        name: "Sequence Number"
+        desc: ""
+        args: { filter: numeric }

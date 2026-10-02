@@ -1,0 +1,30 @@
+details:
+    type: medicalForms
+    name: Medical Forms
+    table: tawasulPersonMedical
+    modes: { update: true, insert: true, export: true }
+access:
+    module: Students
+    action: Manage Medical Forms
+primaryKey:
+    tawasulPersonMedicalID
+uniqueKeys:
+    - tawasulPersonID
+table:
+    tawasulPersonID:
+        name: "Student"
+        desc: "Username or Email (if unique)"
+        args: { filter: nospaces, required: true }
+        relationship: { table: tawasulPerson, key: tawasulPersonID, field: username|email  }
+    longTermMedication:
+        name: "Long Term Medication"
+        desc: ""
+        args: {filter: yesno, custom: true}
+    longTermMedicationDetails:
+        name: "Medication Details"
+        desc: ""
+        args: {filter: string}
+    comment:
+        name: "Comment"
+        desc: ""
+        args: {filter: string}

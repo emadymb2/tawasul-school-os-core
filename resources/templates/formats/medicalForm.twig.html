@@ -1,0 +1,29 @@
+{#<!--
+TawasulOS: the flexible, open school platform
+Founded by Ross Parker at ICHK Secondary. Built by Ross Parker, Sandra Kuipers and the TawasulOS community (https://tos.fiksutiliratkaisut.fi/about/)
+Copyright © 2010, TawasulOS Foundation
+TawasulOS™, TawasulOS Education Ltd. (Hong Kong)
+
+This is a TawasulOS template file, written in HTML and Twig syntax.
+For info about editing, see: https://twig.symfony.com/doc/2.x/
+
+Page Foot: Outputs the contents of the HTML <head> tag. This includes 
+all stylesheets and scripts with a 'head' context.
+-->#}
+
+{% if tawasulPersonMedicalID %}
+
+    <i>{{ __('Medication') }}:</i> {{ formatUsing('yesNo', longTermMedication) }}<br/>
+
+    {% for field in customFields %}
+        {% if fields[field.tawasulCustomFieldID] %}
+        <i>{{ __(field.name) }}:</i> {{ fields[field.tawasulCustomFieldID] | raw }}<br/>
+        {% endif %}
+    {% endfor %}
+
+
+{% else %}
+
+    <span style="color: #ff0000; font-weight: bold">{{ __('No') }}</span>
+
+{% endif %}

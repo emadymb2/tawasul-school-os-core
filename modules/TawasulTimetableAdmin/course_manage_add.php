@@ -1,0 +1,126 @@
+<?php
+/*
+Gibbon: the flexible, open school platform
+Founded by Ross Parker at ICHK Secondary. Built by Ross Parker, Sandra Kuipers and the Gibbon community (https://gibbonedu.org/about/)
+Copyright © 2010, Gibbon Foundation
+Gibbon™, Gibbon Education Ltd. (Hong Kong)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+use TawasulOS\Http\Url;
+use TawasulOS\Forms\Form;
+use TawasulOS\Forms\CustomFieldHandler;
+use TawasulOS\Forms\DatabaseFormFactory;
+use TawasulOS\Domain\Departments\DepartmentGateway;
+
+//Module includes
+require_once __DIR__ . '/moduleFunctions.php';
+
+if (isActionAccessible($guid, $connection2, '/modules/TawasulTimetableAdmin/course_manage_add.php') == false) {
+    // Access denied
+    $page->addError(__('You do not have access to this action.'));
+} else {
+    //Proceed!
+    $tawasulSchoolYearID = $_GET['tawasulSchoolYearID'] ?? '';
+    $search = $_GET['search'] ?? '';
+    $urlParams = compact('tawasulSchoolYearID', 'search');
+
+    $page->breadcrumbs
+        ->add(__('Manage Courses & Classes'), 'course_manage.php', $urlParams)
+        ->add(__('Add Course'));
+
+    if (!empty($search)) {
+        $page->navigator->addSearchResultsAction(Url::fromModuleRoute('TawasulTimetableAdmin', 'course_manage.php')->withQueryParams($urlParams));
+    }
+
+    $editLink = '';
+    if (isset($_GET['editID'])) {
+        $editLink = $session->get('absoluteURL').'/index.php?q=/modules/TawasulTimetableAdmin/course_manage_edit.php&tawasulCourseID='.$_GET['editID'].'&tawasulSchoolYearID='.$_GET['tawasulSchoolYearID'];
+    }
+    $page->return->setEditLink($editLink);
+
+    $tawasulSchoolYearID = $_GET['tawasulSchoolYearID'] ?? '';
+
+    if ($tawasulSchoolYearID == '') {
+        $page->addError(__('You have not specified one or more required parameters.'));
+    } else {
+        
+            $data = array('tawasulSchoolYearID' => $tawasulSchoolYearID);
+            $sql = 'SELECT * FROM tawasulSchoolYear WHERE tawasulSchoolYearID=:tawasulSchoolYearID';
+            $result = $connection2->prepare($sql);
+            $result->execute($data);
+
+        if ($result->rowCount() != 1) {
+            $page->addError(__('The specified record does not exist.'));
+        } else {
+			$schoolYear = $result->fetch(); 
+			
+			$form = Form::create('action', $session->get('absoluteURL').'/modules/'.$session->get('module').'/course_manage_addProcess.php');
+			$form->setFactory(DatabaseFormFactory::create($pdo));
+
+			$form->addHiddenValue('address', $session->get('address'));
+			$form->addHiddenValue('tawasulSchoolYearID', $tawasulSchoolYearID);
+			
+            $row = $form->addRow()->addHeading('Basic Details', __('Basic Details'));
+
+			$row = $form->addRow();
+				$row->addLabel('schoolYearName', __('School Year'));
+				$row->addTextField('schoolYearName')->required()->readonly()->setValue($schoolYear['name']);
+			
+            $results = $container->get(DepartmentGateway::class)->selectDepartmentsOfTypeLearningArea();
+			$row = $form->addRow();
+				$row->addLabel('tawasulDepartmentID', __('Learning Area'));
+				$row->addSearchSelect('tawasulDepartmentID')->fromResults($results)->placeholder();
+			
+			$row = $form->addRow();
+				$row->addLabel('name', __('Name'))->description(__('Must be unique for this school year.'));
+				$row->addTextField('name')->required()->maxLength(60);
+			
+			$row = $form->addRow();
+				$row->addLabel('nameShort', __('Short Name'));
+				$row->addTextField('nameShort')->required()->maxLength(16);
+			
+			$row = $form->addRow();
+				$row->addLabel('orderBy', __('Order'))->description(__('May be used to adjust arrangement of courses in reports.'));
+				$row->addNumber('orderBy')->maxLength(3);
+			
+            $row = $form->addRow()->addHeading('Display Information', __('Display Information'));
+
+			$row = $form->addRow();
+				$column = $row->addColumn('blurb');
+				$column->addLabel('description', __('Blurb'));
+				$column->addEditor('description', $guid)->setRows(20);
+			
+			$row = $form->addRow();
+				$row->addLabel('map', __('Include In Curriculum Map'));
+				$row->addYesNo('map')->required();
+			
+            $row = $form->addRow()->addHeading('Configure', __('Configure'));
+
+			$row = $form->addRow();
+				$row->addLabel('tawasulYearGroupIDList', __('Year Groups'))->description(__('Enrolable year groups.'));
+				$row->addCheckboxYearGroup('tawasulYearGroupIDList');
+			
+            // Custom Fields
+            $container->get(CustomFieldHandler::class)->addCustomFieldsToForm($form, 'Course', []);
+
+			$row = $form->addRow();
+				$row->addFooter();
+				$row->addSubmit();
+			
+			echo $form->getOutput();
+        }
+    }
+}

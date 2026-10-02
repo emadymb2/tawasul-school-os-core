@@ -1,0 +1,51 @@
+/* Tawasul OS Tools */
+.tos-primary, .tos-copy { border: 0; border-radius: 20px; padding: 10px 22px; font-weight: 700; cursor: pointer; background: var(--tos-coral, #e8664f); color: #fff; }
+.tos-copy { background: var(--tos-cream, #f3ecdf); color: var(--tos-forest, #1f4a33); padding: 7px 16px; justify-self: start; }
+.tos-primary:disabled { opacity: .55; cursor: wait; }
+.tos-primary:focus-visible, .tos-copy:focus-visible, .tos-preset:focus-visible { outline: 3px solid var(--tos-focus, #e9b949); outline-offset: 2px; }
+.tos-status { min-height: 1.4em; font-weight: 700; }
+.tos-drafts { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 12px; }
+.tos-draft { display: grid; gap: 8px; padding: 16px; border-radius: 20px; background: var(--tos-paper, #fffdf8); border: 1px solid #e6dccb; }
+.tos-draft input, .tos-draft textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; border-radius: 12px; border: 1px solid #e6dccb; font: inherit; }
+.tos-draft input { font-weight: 700; }
+
+.tos-branding { display: grid; grid-template-columns: minmax(0, 1fr) minmax(280px, 420px); gap: 20px; align-items: start; }
+.tos-presets { display: flex; flex-wrap: wrap; gap: 8px; }
+.tos-preset { display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 16px; border: 2px solid #e6dccb; background: #fff; cursor: pointer; font-size: 12px; }
+.tos-preset i { width: 14px; height: 14px; border-radius: 50%; display: inline-block; }
+.tos-color { width: 60px; height: 36px; padding: 0; border: 0; background: none; cursor: pointer; }
+.tos-preview-panel { position: sticky; top: 16px; padding: 16px; border-radius: 24px; background: var(--tos-paper, #fffdf8); border: 1px solid #e6dccb; }
+.tos-preview-panel h3 { margin: 0 0 12px; display: flex; gap: 8px; align-items: center; }
+.tos-badge { font-size: 11px; padding: 4px 10px; border-radius: 12px; background: var(--h, #e9b949); }
+.tos-login-stage { position: relative; overflow: hidden; display: grid; place-items: center; min-height: 440px; padding: 24px; border-radius: 20px; background: var(--p); transition: background .2s; }
+.tos-shape { position: absolute; border-radius: 50%; }
+.tos-shape-a { width: 150px; height: 150px; top: -60px; left: 10%; background: var(--a); }
+.tos-shape-h { width: 80px; height: 80px; bottom: 30px; right: 12%; background: var(--h); }
+.tos-login-card { position: relative; width: 100%; max-width: 300px; display: grid; gap: 10px; padding: 24px; border-radius: 24px; background: #fffdf8; text-align: center; }
+.tos-login-logo { justify-self: center; width: 70px; height: 70px; display: grid; place-items: center; border: 3px double var(--h); border-radius: 50%; overflow: hidden; }
+.tos-login-logo img { max-width: 100%; max-height: 100%; object-fit: contain; }
+.tos-login-card strong { color: var(--p); font-size: 18px; }
+.tos-field { padding: 9px 12px; border-radius: 12px; background: #f3ecdf; text-align: start; font-size: 12px; color: #6b7a70; }
+.tos-login-button { padding: 10px; border-radius: 18px; background: var(--a); color: #fff; font-weight: 700; }
+@media (max-width: 900px) { .tos-branding, .tos-drafts { grid-template-columns: 1fr; } .tos-preview-panel { position: static; } }
+@media (prefers-reduced-motion: reduce) { .tos-login-stage { transition: none; } }
+
+/* Inbox and read status */
+.tos-inbox-summary { font-weight: 700; }
+.tos-inbox { list-style: none; margin: 0; padding: 0; border: 1px solid #e6dccb; border-radius: 20px; overflow: hidden; background: var(--tos-paper, #fffdf8); }
+.tos-inbox li + li { border-top: 1px solid #e6dccb; }
+.tos-inbox a { display: flex; align-items: center; gap: 12px; padding: 14px 16px; color: inherit; text-decoration: none; }
+.tos-inbox a:hover, .tos-inbox a:focus-visible { background: var(--tos-cream, #f3ecdf); }
+.tos-inbox-titles { display: grid; flex: 1; min-width: 0; }
+.tos-inbox-titles span { font-size: 12px; opacity: .75; }
+.tos-inbox-meta { display: grid; justify-items: end; gap: 4px; font-size: 11px; }
+.tos-state { padding: 3px 10px; border-radius: 10px; background: #efe8db; font-weight: 700; }
+.tos-unread .tos-state { background: var(--tos-coral, #e8664f); color: #fff; }
+.tos-unread strong { font-weight: 700; }
+.tos-read strong { font-weight: 400; }
+.tos-dot { flex: 0 0 9px; width: 9px; height: 9px; border-radius: 50%; background: #d6ccb9; display: inline-block; }
+.tos-unread .tos-dot { background: var(--tos-coral, #e8664f); }
+.tos-sent { margin-bottom: 10px; padding: 12px 16px; border: 1px solid #e6dccb; border-radius: 18px; background: var(--tos-paper, #fffdf8); }
+.tos-sent summary { display: flex; justify-content: space-between; gap: 10px; cursor: pointer; }
+.tos-sent ul { list-style: none; padding: 0; margin: 10px 0; display: grid; gap: 6px; }
+.tos-sent li { display: flex; gap: 8px; align-items: center; font-size: 13px; }

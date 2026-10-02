@@ -1,0 +1,132 @@
+<?php
+/*
+Gibbon: the flexible, open school platform
+Founded by Ross Parker at ICHK Secondary. Built by Ross Parker, Sandra Kuipers and the Gibbon community (https://gibbonedu.org/about/)
+Copyright © 2010, Gibbon Foundation
+Gibbon™, Gibbon Education Ltd. (Hong Kong)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+use TawasulOS\Comms\NotificationEvent;
+use TawasulOS\Data\Validator;
+
+require_once __DIR__ . '/../../tawasul.php';
+
+$_POST = $container->get(Validator::class)->sanitize($_POST);
+
+$tawasulFamilyID = $_GET['tawasulFamilyID'] ?? '';
+$address = $_POST['address'] ?? '';
+$URL = $session->get('absoluteURL').'/index.php?q=/modules/'.getModuleName($address)."/data_family.php&tawasulFamilyID=$tawasulFamilyID";
+
+if (isActionAccessible($guid, $connection2, '/modules/TawasulDataUpdater/data_family.php') == false) {
+    $URL .= '&return=error0';
+    header("Location: {$URL}");
+} else {
+    //Proceed!
+    //Check if tawasulFamilyID specified
+    if ($tawasulFamilyID == '') {
+        $URL .= '&return=error1';
+        header("Location: {$URL}");
+    } else {
+        //Get action with highest precendence
+        $highestAction = getHighestGroupedAction($guid, $_POST['address'], $connection2);
+        if ($highestAction == false) {
+            $URL .= "&return=error0$params";
+            header("Location: {$URL}");
+        } else {
+            //Check access to person
+            if ($highestAction == 'Update Family Data_any') {
+                $URLSuccess = $session->get('absoluteURL').'/index.php?q=/modules/TawasulDataUpdater/data_family.php&tawasulFamilyID='.$tawasulFamilyID;
+
+
+                    $dataCheck = array('tawasulFamilyID' => $tawasulFamilyID);
+                    $sqlCheck = 'SELECT tawasulFamily.* FROM tawasulFamily WHERE tawasulFamilyID=:tawasulFamilyID';
+                    $resultCheck = $connection2->prepare($sqlCheck);
+                    $resultCheck->execute($dataCheck);
+            } else {
+                $URLSuccess = $session->get('absoluteURL').'/index.php?q=/modules/TawasulDataUpdater/data_updates.php&tawasulFamilyID='.$tawasulFamilyID;
+
+
+                    $dataCheck = array('tawasulFamilyID' => $tawasulFamilyID, 'tawasulPersonID' => $session->get('tawasulPersonID'));
+                    $sqlCheck = "SELECT tawasulFamily.* FROM tawasulFamily JOIN tawasulFamilyAdult ON (tawasulFamilyAdult.tawasulFamilyID=tawasulFamily.tawasulFamilyID) WHERE tawasulPersonID=:tawasulPersonID AND childDataAccess='Y' AND tawasulFamily.tawasulFamilyID=:tawasulFamilyID";
+                    $resultCheck = $connection2->prepare($sqlCheck);
+                    $resultCheck->execute($dataCheck);
+            }
+
+            if ($resultCheck->rowCount() != 1) {
+                $URL .= '&return=warning';
+                header("Location: {$URL}");
+            } else {
+                $values = $resultCheck->fetch();
+
+                //Proceed!
+                $data = [
+                    'tawasulSchoolYearID' => $session->get('tawasulSchoolYearID'),
+                    'nameAddress' => $_POST['nameAddress'] ?? '',
+                    'homeAddress' => $_POST['homeAddress'] ?? '',
+                    'homeAddressDistrict' => $_POST['homeAddressDistrict'] ?? '',
+                    'homeAddressCountry' => $_POST['homeAddressCountry'] ?? '',
+                    'languageHomePrimary' => $_POST['languageHomePrimary'] ?? '',
+                    'languageHomeSecondary' => $_POST['languageHomeSecondary'] ?? '',
+                    'tawasulPersonIDUpdater' => $session->get('tawasulPersonID'),
+                ];
+
+                // COMPARE VALUES: Has the data changed?
+                $dataChanged = false;
+                foreach ($values as $key => $value) {
+                    if (!isset($data[$key])) continue; // Skip fields we don't plan to update
+                    if (empty($data[$key]) && empty($value)) continue; // Nulls, false and empty strings should cause no change
+
+                    if ($data[$key] != $value) {
+                        $dataChanged = true;
+                    }
+                }
+
+                // Auto-accept updates where no data had changed
+                $data['status'] = $dataChanged ? 'Pending' : 'Complete';
+
+                //Write to database
+                $existing = $_POST['existing'] ?? 'N';
+                $data['tawasulSchoolYearID'] = $session->get('tawasulSchoolYearID');
+                $data['tawasulPersonIDUpdater'] = $session->get('tawasulPersonID');
+                $data['timestamp'] = date('Y-m-d H:i:s');
+
+                if ($existing != 'N') {
+                    $data['tawasulFamilyUpdateID'] = $existing;
+                    $sql = 'UPDATE tawasulFamilyUpdate SET `status`=:status, tawasulSchoolYearID=:tawasulSchoolYearID, nameAddress=:nameAddress, homeAddress=:homeAddress, homeAddressDistrict=:homeAddressDistrict, homeAddressCountry=:homeAddressCountry, languageHomePrimary=:languageHomePrimary, languageHomeSecondary=:languageHomeSecondary, tawasulPersonIDUpdater=:tawasulPersonIDUpdater, timestamp=:timestamp WHERE tawasulFamilyUpdateID=:tawasulFamilyUpdateID';
+                } else {
+                    $data['tawasulFamilyID'] = $tawasulFamilyID;
+                    $sql = 'INSERT INTO tawasulFamilyUpdate SET `status`=:status, tawasulSchoolYearID=:tawasulSchoolYearID, tawasulFamilyID=:tawasulFamilyID, nameAddress=:nameAddress, homeAddress=:homeAddress, homeAddressDistrict=:homeAddressDistrict, homeAddressCountry=:homeAddressCountry, languageHomePrimary=:languageHomePrimary, languageHomeSecondary=:languageHomeSecondary, tawasulPersonIDUpdater=:tawasulPersonIDUpdater, timestamp=:timestamp';
+                }
+                $pdo->statement($sql, $data);
+
+
+                if ($dataChanged) {
+                    // Raise a new notification event
+                    $event = new NotificationEvent('Data Updater', 'Family Data Updates');
+
+                    $event->addRecipient($session->get('organisationDBA'));
+                    $event->setNotificationText(__('A family data update request has been submitted.'));
+                    $event->setActionLink('/index.php?q=/modules/TawasulDataUpdater/data_family_manage.php');
+
+                    $event->sendNotifications($pdo, $session);
+                }
+
+                $URLSuccess .= '&return=success0';
+                header("Location: {$URLSuccess}");
+            }
+        }
+    }
+}

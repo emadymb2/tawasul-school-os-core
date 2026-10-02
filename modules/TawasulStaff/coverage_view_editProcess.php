@@ -1,0 +1,126 @@
+<?php
+/*
+Gibbon: the flexible, open school platform
+Founded by Ross Parker at ICHK Secondary. Built by Ross Parker, Sandra Kuipers and the Gibbon community (https://gibbonedu.org/about/)
+Copyright © 2010, Gibbon Foundation
+Gibbon™, Gibbon Education Ltd. (Hong Kong)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+use TawasulOS\Domain\Staff\StaffCoverageGateway;
+use TawasulOS\FileUploader;
+use TawasulOS\Data\Validator;
+use TawasulOS\Contracts\Filesystem\FileHandler;
+
+require_once __DIR__ . '/../../tawasul.php';
+
+$_POST = $container->get(Validator::class)->sanitize($_POST, ['text' => 'HTML', 'link' => 'URL']);
+
+$tawasulStaffCoverageID = $_POST['tawasulStaffCoverageID'] ?? '';
+
+$URL = $session->get('absoluteURL').'/index.php?q=/modules/TawasulStaff/coverage_view_edit.php&tawasulStaffCoverageID='.$tawasulStaffCoverageID;
+
+if (isActionAccessible($guid, $connection2, '/modules/TawasulStaff/coverage_view_edit.php') == false) {
+    $URL .= '&return=error0';
+    header("Location: {$URL}");
+    exit;
+} else {
+    // Proceed!
+    $staffCoverageGateway = $container->get(StaffCoverageGateway::class);
+    $partialFail = false;
+
+    $type = $_POST['attachmentType'] ?? '';
+    switch ($type) {
+        case 'File': $content = $_POST['attachment'] ?? ''; break;
+        case 'Text': $content = $_POST['text'] ?? ''; break;
+        case 'Link': $content = $_POST['link'] ?? ''; break;
+        default:     $content = '';
+    }
+
+    // Validate the required values are present
+    if (empty($tawasulStaffCoverageID)) {
+        $URL .= '&return=error1';
+        header("Location: {$URL}");
+        exit;
+    }
+
+    // Validate the database relationships exist
+    $coverage = $staffCoverageGateway->getByID($tawasulStaffCoverageID);
+    $fileHandler = $container->get(FileHandler::class);
+
+    if (empty($coverage)) {
+        $URL .= '&return=error2';
+        header("Location: {$URL}");
+        exit;
+    }
+
+    if ($coverage['tawasulPersonID'] != $session->get('tawasulPersonID') && $coverage['tawasulPersonIDStatus'] != $session->get('tawasulPersonID')) {
+        $URL .= '&return=error0';
+        header("Location: {$URL}");
+        return;
+    }
+
+    // File Upload
+    $fileMetaData = null;
+    if ($type == 'File') {
+        if (!empty($_FILES['file'])) {
+            // Upload the file, return the /uploads relative path
+            $fileUploader = new FileUploader($pdo, $session);
+            $content = $fileUploader->uploadFromPost($_FILES['file']);
+
+            if (empty($content)) {
+                $URL .= '&return=error3';
+                header("Location: {$URL}");
+                exit;
+            } else {
+                $fileMetaData = $fileUploader->getFileMetaData($content);
+            }
+        } else {
+            // Remove the attachment if it has been deleted, otherwise retain the original value
+            $content = empty($_POST['attachment']) ? '' : $coverage['attachmentContent'];
+        }
+    }
+
+    // Update the database
+    $updated = $staffCoverageGateway->update($tawasulStaffCoverageID, [
+        'notesStatus'       => $_POST['notesStatus'] ?? '',
+        'attachmentType'    => $type,
+        'attachmentContent' => $content,
+    ]);
+
+    // Record file tracking (only if new file uploaded)
+    if (!empty($fileMetaData)) {
+        $tawasulFileID = $fileHandler->recordFileUpload($fileMetaData, 'tawasulStaffCoverage', $tawasulStaffCoverageID, 'attachmentContent');
+
+        if (empty($tawasulFileID)) {
+            $partialFail = true;
+        }
+    }
+
+    // Handle file deletion when user removes attachment
+    if ($type == 'File' && empty($content) && !empty($coverage['attachmentContent'])) {
+        $deleted = $fileHandler->deleteFile('tawasulStaffCoverage', $tawasulStaffCoverageID, 'attachmentContent');
+    }
+
+    if (!$updated) {
+        $URL .= "&return=error2";
+    } else if ($partialFail) {
+        $URL .= "&return=warning1";
+    } else {
+        $URL .= "&return=success0";
+    }
+
+    header("Location: {$URL}");
+}

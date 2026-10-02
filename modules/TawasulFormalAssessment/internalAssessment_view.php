@@ -1,0 +1,150 @@
+<?php
+/*
+Gibbon: the flexible, open school platform
+Founded by Ross Parker at ICHK Secondary. Built by Ross Parker, Sandra Kuipers and the Gibbon community (https://gibbonedu.org/about/)
+Copyright © 2010, Gibbon Foundation
+Gibbon™, Gibbon Education Ltd. (Hong Kong)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+use TawasulOS\Forms\Form;
+use TawasulOS\Services\Format;
+use TawasulOS\Forms\DatabaseFormFactory;
+use TawasulOS\Domain\System\SettingGateway;
+use TawasulOS\Domain\Students\StudentGateway;
+use TawasulOS\Domain\User\UserGateway;
+
+// Module includes
+require_once __DIR__ . '/moduleFunctions.php';
+
+if (isActionAccessible($guid, $connection2, '/modules/TawasulFormalAssessment/internalAssessment_view.php') == false) {
+    // Access denied
+    $page->addError(__('Your request failed because you do not have access to this action.'));
+} else {
+    // Get action with highest precedence
+    $highestAction = getHighestGroupedAction($guid, $_GET['q'], $connection2);
+    if ($highestAction == false) {
+        $page->addError(__('The highest grouped action cannot be determined.'));
+    } else {
+        if ($highestAction == 'View Internal Assessments_all') { //ALL STUDENTS
+            $page->breadcrumbs->add(__('View All Internal Assessments'));
+
+            $tawasulPersonID = null;
+            if (isset($_GET['tawasulPersonID'])) {
+                $tawasulPersonID = $_GET['tawasulPersonID'] ?? '';
+            }
+
+            echo '<h3>';
+            echo __('Choose A Student');
+            echo '</h3>';
+
+            $form = Form::create("filter", $session->get('absoluteURL')."/index.php", "get", "noIntBorder w-full standardForm");
+			$form->setFactory(DatabaseFormFactory::create($pdo));
+            $form->setClass('noIntBorder w-full');
+			$form->addHiddenValue('q', '/modules/TawasulFormalAssessment/internalAssessment_view.php');
+			$form->addHiddenValue('address', $session->get('address'));
+
+            $row = $form->addRow();
+                $row->addLabel('tawasulPersonID', __('Student'));
+				$row->addSelectStudent('tawasulPersonID', $session->get("tawasulSchoolYearID"), array())->selected($tawasulPersonID)->placeholder();
+
+            $row = $form->addRow();
+				$row->addSearchSubmit($session);
+
+			echo $form->getOutput();
+
+			if ($tawasulPersonID) {
+				echo '<h3>';
+				echo __('Internal Assessments');
+				echo '</h3>';
+
+				// Check for access
+				$resultCheck = $container->get(UserGateway::class)->getUserDetails($tawasulPersonID, $session->get('tawasulSchoolYearID'));
+
+				if (empty($resultCheck)) {
+					$page->addError(__('The selected record does not exist, or you do not have access to it.'));
+				} else {
+					echo getInternalAssessmentRecord($guid, $connection2, $tawasulPersonID);
+				}
+			}
+		} elseif ($highestAction == 'View Internal Assessments_myChildrens') { // MY CHILDREN
+			$page->breadcrumbs->add(__('View My Childrens\'s Internal Assessments'));
+
+			// Test data access field for permission
+			$children = $container->get(StudentGateway::class)->selectActiveStudentsByFamilyAdult($session->get('tawasulSchoolYearID'), $session->get('tawasulPersonID'))->fetchGroupedUnique();
+
+			if (empty($children)) {
+				echo $page->getBlankSlate();
+			} else {
+				// Get child list
+				$options = [];
+
+        foreach($children as $child) {
+            $options[$child['tawasulPersonID']] = Format::name('', $child['preferredName'], $child['surname'], 'Student', true);
+        }
+
+				$tawasulPersonID = (isset($_GET['search'])) ? $_GET['search'] : null;
+
+				if (count($options) == 0) {
+					echo $page->getBlankSlate();
+				} elseif (count($options) == 1) {
+					$tawasulPersonID = key($options);
+				} else {
+					echo '<h2>';
+					echo __('Choose Student');
+					echo '</h2>';
+
+					$form = Form::create("filter", $session->get('absoluteURL')."/index.php", "get");
+					$form->setClass('noIntBorder w-full standardForm');
+
+					$form->addHiddenValue('q', '/modules/TawasulFormalAssessment/internalAssessment_view.php');
+					$form->addHiddenValue('address', $session->get('address'));
+
+					$row = $form->addRow();
+						$row->addLabel('search', __('Student'));
+						$row->addSelect('search')->fromArray($options)->selected($tawasulPersonID)->placeholder();
+
+					$row = $form->addRow();
+						$row->addSearchSubmit($session);
+
+					echo $form->getOutput();
+        }
+
+				$settingGateway = $container->get(SettingGateway::class);
+                $showParentAttainmentWarning = $settingGateway->getSettingByScope('Markbook', 'showParentAttainmentWarning');
+                $showParentEffortWarning = $settingGateway->getSettingByScope('Markbook', 'showParentEffortWarning');
+
+                if ($tawasulPersonID != '' and count($options) > 0) {
+                	// Confirm access to this student
+					        if (empty($children[$tawasulPersonID])) {
+                        $page->addError(__('You do not have access to this action.'));
+                        return;
+                    }
+					
+					        echo getInternalAssessmentRecord($guid, $connection2, $tawasulPersonID, 'parent');
+                }
+            }
+        } else { // My Internal Assessments
+        	$page->breadcrumbs->add(__('View My Internal Assessments'));
+
+            echo '<h3>';
+            echo __('Internal Assessments');
+            echo '</h3>';
+
+            echo getInternalAssessmentRecord($guid, $connection2, $session->get('tawasulPersonID'), 'student');
+        }
+    }
+}
+?>

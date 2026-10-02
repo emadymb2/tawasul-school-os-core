@@ -1,0 +1,220 @@
+<?php
+/*
+Gibbon: the flexible, open school platform
+Founded by Ross Parker at ICHK Secondary. Built by Ross Parker, Sandra Kuipers and the Gibbon community (https://gibbonedu.org/about/)
+Copyright © 2010, Gibbon Foundation
+Gibbon™, Gibbon Education Ltd. (Hong Kong)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+use TawasulOS\Forms\Form;
+use TawasulOS\Services\Format;
+use TawasulOS\Tables\DataTable;
+use TawasulOS\Forms\DatabaseFormFactory;
+use TawasulOS\Domain\Students\StudentGateway;
+use Tos\Module\TawasulAttendance\StudentHistoryData;
+use Tos\Module\TawasulAttendance\StudentHistoryView;
+
+// Module includes
+require_once __DIR__ . '/moduleFunctions.php';
+
+if (isActionAccessible($guid, $connection2, '/modules/TawasulAttendance/report_studentHistory.php') == false) {
+    // Access denied
+    $page->addError(__('You do not have access to this action.'));
+} else {
+    //Proceed!
+    $page->breadcrumbs->add(__('Student History'));
+    $page->scripts->add('chart');
+
+    //Get action with highest precendence
+    $highestAction = getHighestGroupedAction($guid, $_GET['q'], $connection2);
+    if ($highestAction == false) {
+        $page->addError(__('The highest grouped action cannot be determined.'));
+    } else {
+        $viewMode = $_REQUEST['viewMode'] ?? '';
+        $canTakeAttendanceByPerson = isActionAccessible($guid, $connection2, '/modules/TawasulAttendance/attendance_take_byPerson.php');
+        $tawasulSchoolYearID = $session->get('tawasulSchoolYearID');
+
+        if ($highestAction == 'Student History_all') {
+            $tawasulPersonID = $_GET['tawasulPersonID'] ?? '';
+
+            if (empty($viewMode)) {
+                $form = Form::create('action', $session->get('absoluteURL').'/index.php','get');
+                $form->setTitle(__('Choose Student'));
+                $form->setFactory(DatabaseFormFactory::create($pdo));
+                $form->setClass('noIntBorder w-full');
+
+                $form->addHiddenValue('q', "/modules/".$session->get('module')."/report_studentHistory.php");
+
+                $row = $form->addRow();
+                    $row->addLabel('tawasulPersonID', __('Student'));
+                    $row->addSelectStudent('tawasulPersonID', $tawasulSchoolYearID)->selected($tawasulPersonID)->placeholder()->required();
+
+                $row = $form->addRow();
+                    $row->addFooter();
+                    $row->addSearchSubmit($session);
+
+                echo $form->getOutput();
+            }
+
+            if ($tawasulPersonID != '') {
+                $output = '';
+
+                $data = array('tawasulPersonID' => $tawasulPersonID);
+                $sql = 'SELECT * FROM tawasulPerson WHERE tawasulPerson.tawasulPersonID=:tawasulPersonID ORDER BY surname, preferredName';
+                $result = $connection2->prepare($sql);
+                $result->execute($data);
+                if ($result->rowCount() != 1) {
+                    $page->addError(__('The specified record does not exist.'));
+                } else {
+                    $row = $result->fetch();
+
+                    // ATTENDANCE DATA
+                    $attendanceData = $container
+                        ->get(StudentHistoryData::class)
+                        ->getAttendanceData($tawasulSchoolYearID, $tawasulPersonID, $row['dateStart'], $row['dateEnd']);
+
+                    // DATA TABLE
+                    $renderer = $container->get(StudentHistoryView::class);
+                    $renderer->addData('canTakeAttendanceByPerson', $canTakeAttendanceByPerson);
+
+                    $table = DataTable::create('studentHistory', $renderer);
+                    $table->setTitle(__('Attendance History for {name}', ['name' => Format::name($row['title'], $row['preferredName'], $row['surname'], 'Student')]));
+
+                    if (empty($viewMode)) {
+                        $table->addHeaderAction('print', __('Print'))
+                            ->setURL('/report.php')
+                            ->addParam('q', '/modules/TawasulAttendance/report_studentHistory.php')
+                            ->addParam('tawasulPersonID', $tawasulPersonID)
+                            ->addParam('viewMode', 'print')
+                            ->setIcon('print')
+                            ->setTarget('_blank')
+                            ->directLink()
+                            ->displayLabel();
+                    }
+
+                    echo $table->render($attendanceData);
+                }
+            }
+        }
+        else if ($highestAction == 'Student History_myChildren') {
+            $tawasulPersonID = null;
+            if (isset($_GET['tawasulPersonID'])) {
+                $tawasulPersonID = $_GET['tawasulPersonID'] ?? '';
+            }
+
+            // Test data access field for permission
+            $children = $container->get(StudentGateway::class)->selectActiveStudentsByFamilyAdult($tawasulSchoolYearID, $session->get('tawasulPersonID'))->fetchGroupedUnique();
+
+            if (empty($children)) {
+                echo $page->getBlankSlate();
+            } else {
+                // Get child list
+                $countChild = 0;
+                $options = [];
+
+                foreach($children as $child) {
+                    $options[$child['tawasulPersonID']] = Format::name('', $child['preferredName'], $child['surname'], 'Student', true);
+                    ++$countChild;
+                }
+
+                if ($countChild == 0) {
+                    echo $page->getBlankSlate();
+                } else {
+                    $form = Form::create('action', $session->get('absoluteURL').'/index.php','get');
+                    $form->setTitle(__('Choose'));
+                    $form->setFactory(DatabaseFormFactory::create($pdo));
+                    $form->setClass('noIntBorder w-full');
+
+                    $form->addHiddenValue('q', "/modules/".$session->get('module')."/report_studentHistory.php");
+
+                    if ($countChild > 0) {
+                        $row = $form->addRow();
+                            $row->addLabel('tawasulPersonID', __('Child'));
+                            if ($countChild > 1) {
+                                $row->addSelect('tawasulPersonID')->fromArray($options)->selected($tawasulPersonID)->placeholder()->required();
+                            }
+                            else {
+                                $row->addSelect('tawasulPersonID')->fromArray($options)->selected($tawasulPersonID)->required();
+                            }
+                    }
+
+                    $row = $form->addRow();
+                        $row->addFooter();
+                        $row->addSearchSubmit($session);
+
+                    echo $form->getOutput();
+                }
+
+                if ($tawasulPersonID != '') {
+                    $output = '';
+
+                    if (empty($children[$tawasulPersonID])) {
+                        $page->addError(__('You do not have access to this action.'));
+                        return;
+                    }
+
+                    $data = ['tawasulPersonID' => $tawasulPersonID];
+                    $sql = 'SELECT * FROM tawasulPerson WHERE tawasulPerson.tawasulPersonID=:tawasulPersonID ORDER BY surname, preferredName';
+                    $result = $connection2->prepare($sql);
+                    $result->execute($data);
+
+                    if ($result->rowCount() != 1) {
+                        $page->addError(__('The specified record does not exist.'));
+                    } else {
+                        $row = $result->fetch();
+
+                        // ATTENDANCE DATA
+                        $attendanceData = $container
+                            ->get(StudentHistoryData::class)
+                            ->getAttendanceData($tawasulSchoolYearID, $tawasulPersonID, $row['dateStart'], $row['dateEnd']);
+
+                        // DATA TABLE
+                        $renderer = $container->get(StudentHistoryView::class);
+                        $table = DataTable::create('studentHistory', $renderer);
+                        $table->setTitle(__('Attendance History for {name}', ['name' => Format::name($row['title'], $row['preferredName'], $row['surname'], 'Student')]));
+
+                        echo $table->render($attendanceData);
+                    }
+                }
+            }
+        }
+        else if ($highestAction == 'Student History_my') {
+            $output = '';
+
+            $data = array('tawasulPersonID' => $session->get('tawasulPersonID'));
+            $sql = 'SELECT * FROM tawasulPerson WHERE tawasulPerson.tawasulPersonID=:tawasulPersonID ORDER BY surname, preferredName';
+            $result = $connection2->prepare($sql);
+            $result->execute($data);
+            if ($result->rowCount() != 1) {
+                $page->addError(__('The specified record does not exist.'));
+            } else {
+                $row = $result->fetch();
+
+                // ATTENDANCE DATA
+                $attendanceData = $container
+                    ->get(StudentHistoryData::class)
+                    ->getAttendanceData($tawasulSchoolYearID, $session->get('tawasulPersonID'), $row['dateStart'], $row['dateEnd']);
+
+                // DATA TABLE
+                $renderer = $container->get(StudentHistoryView::class);
+                $table = DataTable::create('studentHistory', $renderer);
+                $table->setTitle(__('Attendance History for {name}', ['name' => Format::name($row['title'], $row['preferredName'], $row['surname'], 'Student')]));
+
+                echo $table->render($attendanceData);
+            }
+        }
+    }
+}

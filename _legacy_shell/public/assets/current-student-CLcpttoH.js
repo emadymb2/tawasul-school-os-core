@@ -1,0 +1,1 @@
+import{l as e}from"./index-X_rPxRNn.js";import{a as t}from"./users-data-ChOwpHiG.js";function n(){let n=e();if(n.length===0)return null;let r=t();for(let e of r)if(e.role===`student`&&typeof e.studentId==`number`&&n.some(t=>t.id===e.studentId))return e.studentId;return n[0].id}export{n as t};

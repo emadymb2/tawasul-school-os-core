@@ -1,0 +1,38 @@
+details:
+    type: schoolYearTerms
+    name: Terms
+    table: tawasulSchoolYearTerm
+    modes: { update: true, insert: true, export: true }
+access:
+    module: School Admin
+    action: Manage Terms
+primaryKey:
+    tawasulSchoolYearTermID
+uniqueKeys:
+    - [ tawasulSchoolYearID, nameShort ]
+table:
+    tawasulSchoolYearID: 
+        name: "School Year"
+        desc: "School year name, as set in School Admin. Must already exist."
+        args: { filter: schoolyear, required: true }
+        relationship: { table: tawasulSchoolYear, key: tawasulSchoolYearID, field: name  }
+    name: 
+        name: "Name"
+        desc: ""
+        args: { filter: string, required: true }
+    nameShort: 
+        name: "Short Name"
+        desc: ""
+        args: { filter: string, required: true }
+    sequenceNumber: 
+        name: "Sequence Number"
+        desc: "Must be unique. Controls chronological ordering."
+        args: { filter: numeric, required: true }
+    firstDay: 
+        name: "First Day"
+        desc: ""
+        args: { filter: date, required: true }
+    lastDay: 
+        name: "Last Day"
+        desc: ""
+        args: { filter: date, required: true }

@@ -1,0 +1,426 @@
+<?php
+/*
+Gibbon: the flexible, open school platform
+Founded by Ross Parker at ICHK Secondary. Built by Ross Parker, Sandra Kuipers and the Gibbon community (https://gibbonedu.org/about/)
+Copyright © 2010, Gibbon Foundation
+Gibbon™, Gibbon Education Ltd. (Hong Kong)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+use TawasulOS\Forms\Form;
+use TawasulOS\Services\Format;
+use TawasulOS\Domain\System\SettingGateway;
+use TawasulOS\Domain\Planner\PlannerEntryGateway;
+use TawasulOS\Forms\Builder\Storage\FormSessionStorage;
+use Tos\Module\TawasulPlanner\Forms\PlannerFormFactory;
+use TawasulOS\Forms\CustomFieldHandler;
+
+//Module includes
+require_once __DIR__ . '/moduleFunctions.php';
+
+if (isActionAccessible($guid, $connection2, '/modules/TawasulPlanner/planner_add.php') == false) {
+    // Access denied
+    $page->addError(__('You do not have access to this action.'));
+} else {
+    $highestAction = getHighestGroupedAction($guid, $_GET['q'], $connection2);
+    if ($highestAction == false) {
+        $page->addError(__('The highest grouped action cannot be determined.'));
+    } else {
+        //Set variables
+        $today = date('Y-m-d');
+
+        $settingGateway = $container->get(SettingGateway::class);
+        $plannerGateway = $container->get(PlannerEntryGateway::class);
+        $homeworkNameSingular = $settingGateway->getSettingByScope('Planner', 'homeworkNameSingular');
+        $homeworkNamePlural = $settingGateway->getSettingByScope('Planner', 'homeworkNamePlural');
+
+        //Proceed!
+        //Get viewBy, date and class variables
+        $params = [];
+        $viewBy = null;
+        if (isset($_GET['viewBy'])) {
+            $viewBy = $_GET['viewBy'] ?? '';
+        }
+        $subView = null;
+        if (isset($_GET['subView'])) {
+            $subView = $_GET['subView'] ?? '';
+        }
+        if ($viewBy != 'date' and $viewBy != 'class') {
+            $viewBy = 'date';
+        }
+        $tawasulCourseClassID = null;
+        $date = $_GET['date'] ?? null;
+        $dateStamp = null;
+        if ($viewBy == 'date') {
+            if (isset($_GET['dateHuman']) == true) {
+                $date = Format::dateConvert($_GET['dateHuman']);
+            }
+            if ($date == '') {
+                $date = date('Y-m-d');
+            }
+            [$dateYear, $dateMonth, $dateDay] = explode('-', $date);
+            $dateStamp = mktime(0, 0, 0, $dateMonth, $dateDay, $dateYear);
+            $params += [
+                'viewBy' => 'date',
+                'date' => $date,
+            ];
+        } elseif ($viewBy == 'class') {
+            $class = null;
+            if (isset($_GET['class'])) {
+                $class = $_GET['class'] ?? '';
+            }
+            $tawasulCourseClassID = $_GET['tawasulCourseClassID'] ?? '';
+            $params += [
+                'viewBy' => 'class',
+                'date' => $date,
+                'tawasulCourseClassID' => $tawasulCourseClassID,
+                'subView' => $subView,
+            ];
+        }
+
+        [$todayYear, $todayMonth, $todayDay] = explode('-', $today);
+        $todayStamp = mktime(12, 0, 0, $todayMonth, $todayDay, $todayYear);
+
+        $proceed = true;
+        $extra = '';
+        if ($viewBy == 'class') {
+            if ($tawasulCourseClassID == '') {
+                $proceed = false;
+            } else {
+                try {
+                    if ($highestAction == 'Lesson Planner_viewEditAllClasses') {
+                        $data = array('tawasulSchoolYearID' => $session->get('tawasulSchoolYearID'), 'tawasulCourseClassID' => $tawasulCourseClassID);
+                        $sql = 'SELECT tawasulCourse.tawasulCourseID, tawasulCourseClass.tawasulCourseClassID, tawasulCourse.nameShort AS course, tawasulCourseClass.nameShort AS class, tawasulDepartmentID, tawasulCourse.tawasulYearGroupIDList FROM tawasulCourseClass JOIN tawasulCourse ON (tawasulCourseClass.tawasulCourseID=tawasulCourse.tawasulCourseID) WHERE tawasulCourse.tawasulSchoolYearID=:tawasulSchoolYearID AND tawasulCourseClass.tawasulCourseClassID=:tawasulCourseClassID ORDER BY course, class';
+                    } else {
+                        $data = array('tawasulSchoolYearID' => $session->get('tawasulSchoolYearID'), 'tawasulCourseClassID' => $tawasulCourseClassID, 'tawasulPersonID' => $session->get('tawasulPersonID'));
+                        $sql = "SELECT tawasulCourse.tawasulCourseID, tawasulCourseClass.tawasulCourseClassID, tawasulCourse.nameShort AS course, tawasulCourseClass.nameShort AS class, tawasulDepartmentID, tawasulCourse.tawasulYearGroupIDList FROM tawasulCourseClassPerson JOIN tawasulCourseClass ON (tawasulCourseClassPerson.tawasulCourseClassID=tawasulCourseClass.tawasulCourseClassID) JOIN tawasulCourse ON (tawasulCourseClass.tawasulCourseID=tawasulCourse.tawasulCourseID) WHERE tawasulCourse.tawasulSchoolYearID=:tawasulSchoolYearID AND tawasulPersonID=:tawasulPersonID AND tawasulCourseClass.tawasulCourseClassID=:tawasulCourseClassID AND role='Teacher' ORDER BY course, class";
+                    }
+                    $result = $connection2->prepare($sql);
+                    $result->execute($data);
+                } catch (PDOException $e) {
+                }
+
+                if ($result->rowCount() != 1) {
+                    $proceed = false;
+                } else {
+                    $values = $result->fetch();
+                    $extra = $values['course'].'.'.$values['class'];
+                    $tawasulDepartmentID = $values['tawasulDepartmentID'];
+                    $tawasulYearGroupIDList = $values['tawasulYearGroupIDList'];
+                }
+            }
+        } else {
+            $extra = Format::date($date);
+        }
+
+        if ($proceed == false) {
+            $page->addError(__('Your request failed because you do not have access to this action.'));
+        } else {
+            $page->breadcrumbs
+                ->add(
+                    empty($extra) ?
+                        __('Planner') :
+                        __('Planner for {classDesc}', ['classDesc' => $extra]),
+                    'planner.php',
+                    $params
+                )
+                ->add(__('Add Lesson Plan'));
+
+            $editLink = '';
+            if (isset($_GET['editID'])) {
+                $editLink = $session->get('absoluteURL').'/index.php?' . http_build_query($params + [
+                    'q' => '/modules/TawasulPlanner/planner_edit.php',
+                    'tawasulPlannerEntryID' => $_GET['editID'] ?? '',
+                ]);
+            }
+            $page->return->setEditLink($editLink);
+
+            $formId = 'action';
+            $autoSaveUrl = $session->get('absoluteURL').'/modules/'.$session->get('module')."/planner_addAutoSave.php";
+            
+            $form = Form::create($formId, $session->get('absoluteURL').'/modules/'.$session->get('module')."/planner_addProcess.php?viewBy=$viewBy&subView=$subView&address=".$session->get('address'));
+            $form->setFactory(PlannerFormFactory::create($pdo));
+
+            $form->addHiddenValue('address', $session->get('address'));
+
+            //BASIC INFORMATION
+            $form->addRow()->addHeading('Basic Information', __('Basic Information'));
+
+            if ($viewBy == 'class') {
+                $form->addHiddenValue('tawasulCourseClassID', $values['tawasulCourseClassID']);
+                $row = $form->addRow();
+                    $row->addLabel('courseClassName', __('Class'));
+                    $row->addTextField('courseClassName')->setValue($values['course'].'.'.$values['class'])->required()->readonly();
+            } else {
+                if ($highestAction == 'Lesson Planner_viewEditAllClasses') {
+                    $data = array('tawasulSchoolYearID' => $session->get('tawasulSchoolYearID'));
+                    $sql = 'SELECT tawasulCourseClass.tawasulCourseClassID AS value, CONCAT(tawasulCourse.nameShort,".", tawasulCourseClass.nameShort) AS name FROM tawasulCourseClass JOIN tawasulCourse ON (tawasulCourseClass.tawasulCourseID=tawasulCourse.tawasulCourseID) WHERE tawasulCourse.tawasulSchoolYearID=:tawasulSchoolYearID ORDER BY name';
+                } else {
+                    $data = array('tawasulSchoolYearID' => $session->get('tawasulSchoolYearID'), 'tawasulPersonID' => $session->get('tawasulPersonID'));
+                    $sql = 'SELECT tawasulCourseClass.tawasulCourseClassID AS value, CONCAT(tawasulCourse.nameShort,".", tawasulCourseClass.nameShort) AS name FROM tawasulCourseClassPerson JOIN tawasulCourseClass ON (tawasulCourseClassPerson.tawasulCourseClassID=tawasulCourseClass.tawasulCourseClassID) JOIN tawasulCourse ON (tawasulCourseClass.tawasulCourseID=tawasulCourse.tawasulCourseID) WHERE tawasulCourse.tawasulSchoolYearID=:tawasulSchoolYearID AND tawasulPersonID=:tawasulPersonID ORDER BY name';
+                }
+                $row = $form->addRow();
+                    $row->addLabel('tawasulCourseClassID', __('Class'));
+                    $row->addSearchSelect('tawasulCourseClassID')->fromQuery($pdo, $sql, $data)->required()->placeholder();
+            }
+
+            if ($viewBy == 'class') {
+                $data = array('tawasulCourseClassID' => $values['tawasulCourseClassID']);
+                $sql = "SELECT tawasulCourseClassID AS chainedTo, tawasulUnit.tawasulUnitID as value, name FROM tawasulUnit JOIN tawasulUnitClass ON (tawasulUnit.tawasulUnitID=tawasulUnitClass.tawasulUnitID) WHERE tawasulCourseClassID=:tawasulCourseClassID AND active='Y' AND running='Y' ORDER BY ordering, name";
+                $row = $form->addRow();
+                    $row->addLabel('tawasulUnitID', __('Unit'));
+                    $row->addSelect('tawasulUnitID')->fromQuery($pdo, $sql, $data)->placeholder();
+            }
+            else {
+                $sql = "SELECT GROUP_CONCAT(tawasulCourseClassID SEPARATOR ' ') AS chainedTo, tawasulUnit.tawasulUnitID as value, name FROM tawasulUnit JOIN tawasulUnitClass ON (tawasulUnit.tawasulUnitID=tawasulUnitClass.tawasulUnitID) WHERE active='Y' AND running='Y'  GROUP BY tawasulUnit.tawasulUnitID ORDER BY ordering, name";
+                $row = $form->addRow();
+                    $row->addLabel('tawasulUnitID', __('Unit'));
+                    $row->addSelect('tawasulUnitID')->fromQueryChained($pdo, $sql, [], 'tawasulCourseClassID')->placeholder();
+            }
+
+            $row = $form->addRow();
+                $row->addLabel('name', __('Lesson Name'));
+                $row->addTextField('name')->setValue()->maxLength(50)->required();
+
+            $row = $form->addRow();
+                $row->addLabel('summary', __('Summary'));
+                $row->addTextField('summary')->setValue()->maxLength(255);
+
+            // Try and find the next unplanned slot for this class.
+            $nextTimeStart = $_GET['timeStart'] ?? null;
+            $nextTimeEnd = $_GET['timeEnd'] ?? null;
+            if ($viewBy == 'class') {
+                $nextDate = $_GET['date'] ?? null;
+
+                if (empty($nextDate)) {
+                    // Select upcoming lessons based on the latest lesson date, if it exists, fallback to the current date
+                    $latestLesson = $plannerGateway->getLatestLessonByClass($tawasulCourseClassID);
+                    $upcomingLessons = $plannerGateway->selectUpcomingPlannerTTByDate($tawasulCourseClassID, $latestLesson['date'] ?? date('Y-m-d'))->fetchAll();
+
+                    foreach ($upcomingLessons as $nextLesson) {
+                        $plannerEntry = $plannerGateway->selectBy(['date' => $nextLesson['date'], 'timeStart' => $nextLesson['timeStart'], 'timeEnd' => $nextLesson['timeEnd'], 'tawasulCourseClassID' => $tawasulCourseClassID], ['tawasulPlannerEntryID'])->fetch();
+
+                        if (empty($plannerEntry)) {
+                            $nextDate = $nextLesson['date'];
+                            $nextTimeStart = $nextLesson['timeStart'];
+                            $nextTimeEnd = $nextLesson['timeEnd'];
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // Try and find the tawasulTTDayRowClassID for this lesson
+            $tawasulTTDayRowClassID = $GET['tawasulTTDayRowClassID'] ?? null;
+            if (empty($tawasulTTDayRowClassID) && !empty($date) && !empty($nextTimeStart) && !empty($nextTimeEnd)) {
+                $lesson = $container->get(PlannerEntryGateway::class)->getPlannerTTByClassTimes($tawasulCourseClassID, $date, $nextTimeStart, $nextTimeEnd);
+                $tawasulTTDayRowClassID =  $lesson['tawasulTTDayRowClassID'] ?? '';
+                $form->addHiddenValue('tawasulTTDayRowClassID', $tawasulTTDayRowClassID);
+            }
+
+            if ($viewBy == 'date') {
+                $row = $form->addRow();
+                    $row->addLabel('date', __('Date'));
+                    $row->addDate('date')->setValue(Format::date($date))->required()->readonly();
+            }
+            else {
+                $row = $form->addRow();
+                    $row->addLabel('date', __('Date'));
+                    $row->addDate('date')->setValue(Format::date($nextDate))->required();
+            }
+
+            $nextTimeStart = (isset($nextTimeStart)) ? substr($nextTimeStart, 0, 5) : null;
+            $row = $form->addRow();
+                $row->addLabel('timeStart', __('Start Time'))->description(__("Format: hh:mm (24hr)"));
+                $row->addTime('timeStart')->setValue($nextTimeStart)->required();
+
+            $nextTimeEnd = (isset($nextTimeEnd)) ? substr($nextTimeEnd, 0, 5) : null;
+            $row = $form->addRow();
+                $row->addLabel('timeEnd', __('End Time'))->description(__("Format: hh:mm (24hr)"));
+                $row->addTime('timeEnd')->setValue($nextTimeEnd)->required();
+
+            if (empty($tawasulTTDayRowClassID)) {
+                $row = $form->addRow();
+                    $row->addLabel('tawasulSpaceID', __('Location'));
+                    $row->addSelectSpace('tawasulSpaceID')
+                        ->placeholder();
+            }
+
+            $form->addRow()->addHeading('Lesson Content', __('Lesson Content'));
+
+            $description = $settingGateway->getSettingByScope('Planner', 'lessonDetailsTemplate') ;
+            $row = $form->addRow();
+                $column = $row->addColumn();
+                $column->addLabel('description', __('Lesson Details'));
+                $column->addEditor('description', $guid)->setRows(20)->showMedia()->setValue($description)->enableAutoSave($autoSaveUrl, $formId);
+
+            $teachersNotes = $settingGateway->getSettingByScope('Planner', 'teachersNotesTemplate');
+            $row = $form->addRow();
+                $column = $row->addColumn();
+                $column->addLabel('teachersNotes', __('Teacher\'s Notes'));
+                $column->addEditor('teachersNotes', $guid)->setRows(5)->showMedia()->setValue($teachersNotes)->enableAutoSave($autoSaveUrl, $formId);
+
+            //HOMEWORK
+            $form->addRow()->addHeading('Homework', __($homeworkNameSingular));
+
+            $form->toggleVisibilityByClass('homework')->onClick('homework')->when('Y');
+            $row = $form->addRow();
+                $row->addLabel('homework', __('Add {homeworkName}?', ['homeworkName' => __($homeworkNameSingular)]));
+                $row->addYesNo('homework')->required()->checked('N');
+
+            $row = $form->addRow()->addClass('homework');
+                $row->addLabel('homeworkDueDate', __('Due Date'))->description(__('Date is required, time is optional.'));
+                $col = $row->addColumn('homeworkDueDate')->addClass('homework');
+                $col->addDate('homeworkDueDate')->addClass('mr-2')->required();
+                $col->addTime('homeworkDueDateTime');
+
+            $row = $form->addRow()->addClass('homework');
+                $row->addLabel('homeworkTimeCap', __('Time Cap?'))->description(__('The maximum time, in minutes, for students to work on this.'));
+                $row->addNumber('homeworkTimeCap');
+
+            $row = $form->addRow()->addClass('homework');
+                $column = $row->addColumn();
+                $column->addLabel('homeworkDetails', __('{homeworkName} Details', ['homeworkName' => __($homeworkNameSingular)]));
+                $column->addEditor('homeworkDetails', $guid)->setRows(15)->showMedia()->required()->enableAutoSave($autoSaveUrl, $formId);
+
+            $form->toggleVisibilityByClass('homeworkSubmission')->onClick('homeworkSubmission')->when('Y');
+            $row = $form->addRow()->addClass('homework');
+                $row->addLabel('homeworkSubmission', __('Online Submission?'));
+                $row->addYesNo('homeworkSubmission')->required()->checked('N');
+
+            $row = $form->addRow()->setClass('homeworkSubmission');
+                $row->addLabel('homeworkSubmissionDateOpen', __('Submission Open Date'));
+                $row->addDate('homeworkSubmissionDateOpen')->required();
+
+            $row = $form->addRow()->setClass('homeworkSubmission');
+                $row->addLabel('homeworkSubmissionDrafts', __('Drafts'));
+                $row->addSelect('homeworkSubmissionDrafts')->fromArray(array('' => __('None'), '1' => __('1'), '2' => __('2'), '3' => __('3')));
+
+            $row = $form->addRow()->setClass('homeworkSubmission');
+                $row->addLabel('homeworkSubmissionType', __('Submission Type'));
+                $row->addSelect('homeworkSubmissionType')->fromArray(array('Link' => __('Link'), 'File' => __('File'), 'Link/File' => __('Link/File')))->required();
+
+            $row = $form->addRow()->setClass('homeworkSubmission');
+                $row->addLabel('homeworkSubmissionRequired', __('Submission Required'));
+                $row->addSelect('homeworkSubmissionRequired')->fromArray(array('Optional' => __('Optional'), 'Required' => __('Required')))->required();
+
+            if (isActionAccessible($guid, $connection2, '/modules/TawasulCrowdAssessment/crowdAssess.php')) {
+                $form->toggleVisibilityByClass('homeworkCrowdAssess')->onClick('homeworkCrowdAssess')->when('Y');
+                $row = $form->addRow()->addClass('homeworkSubmission');
+                    $row->addLabel('homeworkCrowdAssess', __('Crowd Assessment?'));
+                    $row->addYesNo('homeworkCrowdAssess')->required()->checked('N');
+
+                $row = $form->addRow()->addClass('homeworkCrowdAssess');
+                    $row->addLabel('homeworkCrowdAssessControl', __('Access Controls?'))->description(__('Decide who can see this {homeworkName}.', ['homeworkName' => __($homeworkNameSingular)]));
+                    $column = $row->addColumn()->setClass('flex-col items-end');
+                        $column->addCheckbox('homeworkCrowdAssessClassTeacher')->checked(true)->description(__('Class Teacher'))->disabled();
+                        $column->addCheckbox('homeworkCrowdAssessClassSubmitter')->checked(true)->description(__('Submitter'))->disabled();
+                        $column->addCheckbox('homeworkCrowdAssessClassmatesRead')->description(__('Classmates'));
+                        $column->addCheckbox('homeworkCrowdAssessOtherStudentsRead')->description(__('Other Students'));
+                        $column->addCheckbox('homeworkCrowdAssessOtherTeachersRead')->description(__('Other Teachers'));
+                        $column->addCheckbox('homeworkCrowdAssessSubmitterParentsRead')->description(__('Submitter\'s Parents'));
+                        $column->addCheckbox('homeworkCrowdAssessClassmatesParentsRead')->description(__('Classmates\'s Parents'));
+                        $column->addCheckbox('homeworkCrowdAssessOtherParentsRead')->description(__('Other Parents'));
+            }
+
+            //MARKBOOK
+            $form->addRow()->addHeading('Markbook', __('Markbook'));
+
+            $form->toggleVisibilityByClass('homework')->onClick('homework')->when('Y');
+            $row = $form->addRow();
+                $row->addLabel('markbook', __('Create Markbook Column?'))->description(__('Linked to this lesson by default.'));
+                $row->addYesNo('markbook')->required()->checked('N');
+
+            //ADVANCED
+            $form->addRow()->addHeading('Advanced Options', __('Advanced Options'));
+
+            $form->toggleVisibilityByClass('advanced')->onCheckbox('advanced')->when('Y');
+            $row = $form->addRow();
+                $row->addCheckbox('advanced')->setValue('Y')->description(__('Show Advanced Options'));
+
+            // OUTCOMES
+            if ($viewBy == 'date') {
+                $form->addRow()->addClass('advanced')->addHeading('Outcomes', __('Outcomes'));
+                $form->addRow()->addClass('advanced')->addAlert(__('Outcomes cannot be set when viewing the Planner by date. Use the "Choose A Class" dropdown in the sidebar to switch to a class. Make sure to save your changes first.'), 'warning');
+            } else {
+                $form->addRow()->addClass('advanced')->addHeading('Outcomes', __('Outcomes'));
+                $form->addRow()->addClass('advanced')->addContent(__('Link this lesson to outcomes (defined in the Manage Outcomes section of the Planner), and track which outcomes are being met in which lessons.'));
+
+                $allowOutcomeEditing = $settingGateway->getSettingByScope('Planner', 'allowOutcomeEditing');
+
+                $row = $form->addRow()->addClass('advanced');
+                    $row->addPlannerOutcomeBlocks('outcome', $session, $tawasulYearGroupIDList, $tawasulDepartmentID, $allowOutcomeEditing);
+            }
+
+            //Access
+            $form->addRow()->addClass('advanced')->addHeading('Access', __('Access'));
+
+            $sharingDefaultStudents = $settingGateway->getSettingByScope('Planner', 'sharingDefaultStudents');
+            $row = $form->addRow()->addClass('advanced');
+                $row->addLabel('viewableStudents', __('Viewable by Students'));
+                $row->addYesNo('viewableStudents')->required()->selected($sharingDefaultStudents);
+
+            $sharingDefaultParents = $settingGateway->getSettingByScope('Planner', 'sharingDefaultParents');
+            $row = $form->addRow()->addClass('advanced');
+                $row->addLabel('viewableParents', __('Viewable by Parents'));
+                $row->addYesNo('viewableParents')->required()->selected($sharingDefaultParents);
+
+            $row = $form->addRow()->addClass('advanced');
+                $row->addLabel('videoLink', __('Online Lesson'))->description(__('Displays a video link for online lessons'));
+                $row->addURL('videoLink');
+
+            //Guests
+            $form->addRow()->addClass('advanced')->addHeading('Guests', __('Guests'));
+
+            $row = $form->addRow()->addClass('advanced');
+                $row->addLabel('guests', __('Guest List'));
+                $row->addSelectUsers('guests', $session->get('tawasulSchoolYearID'))->selectMultiple();
+
+            $roles = array(
+                'Guest Student' => __('Guest Student'),
+                'Guest Teacher' => __('Guest Teacher'),
+                'Guest Assistant' => __('Guest Assistant'),
+                'Guest Technician' => __('Guest Technician'),
+                'Guest Parent' => __('Guest Parent'),
+                'Other Guest' => __('Other Guest'),
+            );
+            $row = $form->addRow()->addClass('advanced');
+                $row->addLabel('role', __('Role'));
+                $row->addSelect('role')->fromArray($roles);
+
+            $row = $form->addRow();
+                $row->addCheckbox('notify')->description(__('Notify all class participants'));
+                $row->addSubmit();
+
+            // CUSTOM FIELDS
+            $container->get(CustomFieldHandler::class)->addCustomFieldsToForm($form, 'Lesson Plan', [], '');
+
+            $formData = $container->get(FormSessionStorage::class);
+            $formData->load('plannerAdd'.$tawasulCourseClassID);
+
+            if (!empty($nextDate)) {
+                $formData->addData(['date' => $nextDate, 'timeStart' => $nextTimeStart, 'timeEnd' => $nextTimeEnd]);
+            }
+            
+            $form->loadAllValuesFrom($formData->getData());
+            $form->enableAutoSave($formId, $autoSaveUrl);
+
+            echo $form->getOutput();
+        }
+
+        //Print sidebar
+        $session->set('sidebarExtra', sidebarExtra($guid, $connection2, $todayStamp, $session->get('tawasulPersonID'), $dateStamp, $tawasulCourseClassID));
+    }
+}

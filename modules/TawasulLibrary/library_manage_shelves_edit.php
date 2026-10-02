@@ -1,0 +1,174 @@
+<?php
+/*
+Gibbon: the flexible, open school platform
+Founded by Ross Parker at ICHK Secondary. Built by Ross Parker, Sandra Kuipers and the Gibbon community (https://gibbonedu.org/about/)
+Copyright © 2010, Gibbon Foundation
+Gibbon™, Gibbon Education Ltd. (Hong Kong)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+use TawasulOS\Forms\Form;
+use TawasulOS\Forms\DatabaseFormFactory;
+use TawasulOS\Domain\Library\LibraryShelfGateway;
+use TawasulOS\Domain\Library\LibraryShelfItemGateway;
+use TawasulOS\Forms\Prefab\BulkActionForm;
+
+if (isActionAccessible($guid, $connection2, '/modules/TawasulLibrary/library_manage_shelves_edit.php') == false) {
+    // Access denied
+    $page->addError(__('You do not have access to this action.'));
+} else {
+    // Proceed!
+    $page->breadcrumbs
+        ->add(__('Manage Library Shelves'), 'library_manage_shelves.php')
+        ->add(__('Edit Shelf'));
+
+    $tawasulLibraryShelfID = $_GET['tawasulLibraryShelfID'] ?? '';
+    $libraryShelfGateway = $container->get(LibraryShelfGateway::class);
+    $libraryShelfItemGateway = $container->get(LibraryShelfItemGateway::class);
+    $categories = $libraryShelfGateway->selectDisplayableCategories();
+
+    if (empty($tawasulLibraryShelfID)) {
+        $page->addError(__('You have not specified one or more required parameters.'));
+        return;
+    }
+
+    $values = $libraryShelfGateway->getShelfByID($tawasulLibraryShelfID);
+
+    if (empty($values)) {
+        $page->addError(__('The specified record cannot be found.'));
+        return;
+    }
+
+    $categories = $libraryShelfGateway->selectDisplayableCategories();
+
+    $form = Form::create('libraryShelf', $session->get('absoluteURL').'/modules/TawasulLibrary/library_manage_shelves_editProcess.php');
+    $form->setFactory(DatabaseFormFactory::create($pdo));
+    $form->addRow()->addHeading('Shelf Details', __('Shelf Details'));
+    $form->addHiddenValue('address', $session->get('address'));
+    $form->addHiddenValue('tawasulLibraryShelfID', $tawasulLibraryShelfID);
+
+    $row = $form->addRow();
+        $row->addLabel('name', __('Name'));
+        $row->addTextField('name')
+            ->required()
+            ->setValue($values['name']);
+
+    $row = $form->addRow();
+        $row->addLabel('active', __('Active'));
+        $row->addYesNo('active')
+            ->required()
+            ->setValue($values['active']);
+
+    $row = $form->addRow();
+        $row->addLabel('shuffle', __('Automatically Shuffle'));
+        $row->addYesNo('shuffle')
+            ->required()
+            ->setValue($values['shuffle']);
+
+    $row = $form->addRow();
+        $row->addLabel('type', __('Fill Option'));
+        $row->addTextField('type')->setValue($values['type'])->readOnly();
+
+    if ($values['type'] == 'Automatic') {
+        $row = $form->addRow();
+            $row->addLabel('tawasulLibraryTypeID', __('Catalog Type'));
+            $row->addSelect('tawasulLibraryTypeID')
+                ->fromArray($categories['types'])
+                ->selected($values['tawasulLibraryTypeID'])
+                ->readOnly();
+
+        $row = $form->addRow()->addClass('autoFill');
+            $row->addLabel('field', __('Category'));
+            $row->addSelect('field')
+                ->fromArray(array_keys($categories['categoryChained']))
+                ->chainedTo('tawasulLibraryTypeID', $categories['categoryChained'])
+                ->placeholder('Please select...')
+                ->selected($values['field'])
+                ->required();
+
+        $form->toggleVisibilityByClass('searchTerm')->onSelect('field')->when('Search Terms');
+        $form->toggleVisibilityByClass('autoFillSelect')->onSelect('field')->whenNot('Search Terms');
+
+        $row = $form->addRow()->addClass('autoFillSelect');
+            $row->addLabel('fieldValue', __('Sub-Category'));
+            $row->addSelect('fieldValue')
+                ->fromArray($categories['subCategory'])
+                ->chainedTo('field', $categories['subCategoryChained'])
+                ->placeholder('Please select...')
+                ->selected($values['fieldValue']);
+
+        $row = $form->addRow()->addClass('searchTerm');
+            $row->addLabel('fieldValue', __('Search Term'));
+            $row->addTextField('fieldValue')
+                ->setValue($values['fieldValue'])
+                ->placeholder('Enter Term Name...');
+
+    } else {
+        $row = $form->addRow();
+            $row->addLabel('addItems', __('Add More Items'));
+            $row->addFinder('addItems')
+                ->fromAjax($session->get('absoluteURL').'/modules/TawasulLibrary/library_searchAjax.php')
+                ->setParameter('resultsLimit', 10)
+                ->resultsFormatter('function(item){ return "<li class=\'\'><div class=\'inline-block bg-cover w-12 h-12 ml-2 bg-gray-200 border border-gray-400 bg-no-repeat\' style=\'background-image: url(" + item.imageLocation + ");\'></div><div class=\'inline-block px-4 truncate\'>" + item.name + "<br/><span class=\'inline-block opacity-75 truncate text-xxs\'>" + item.producer + "</span></div></li>"; }');
+    }
+
+    $row = $form->addRow();
+        $row->addFooter();
+        $row->addSubmit();
+
+    $form->loadAllValuesFrom($values);
+
+    echo $form->getOutput();
+
+    if ($values['type'] == 'Manual') {
+
+        // QUERY
+        $criteria = $libraryShelfItemGateway->newQueryCriteria(true)
+        ->pageSize(10)
+        ->sortBy('name')
+        ->filterBy('imageType',)
+        ->fromPOST();
+
+        $items = $libraryShelfItemGateway->queryItemsByShelfID($tawasulLibraryShelfID, $criteria);
+
+        // FORM
+        $form = BulkActionForm::create('bulkAction', $session->get('absoluteURL').'/modules/TawasulLibrary/library_shelves_editProcessBulk.php');
+        $form->addHiddenValue('tawasulLibraryShelfID', $tawasulLibraryShelfID);
+        $col = $form->createBulkActionColumn([
+            'Delete' => __('Delete'),
+        ]);
+        $col->addSubmit(__('Go'));
+
+        // DATA TABLE
+        $table = $form->addRow()->addDataTable('items', $criteria)->withData($items);
+        $table->setTitle(__('Current Items'));
+        $table->addMetaData('bulkActions', $col);
+        $table->addColumn('name', __('Name'));
+        $table->addColumn('producer', __('Producer'));
+        
+        // ACTIONS
+        $table->addActionColumn()
+            ->addParam('tawasulLibraryShelfID', $tawasulLibraryShelfID)
+            ->format(function ($item, $actions) {
+                $actions->addAction('delete', __('Delete'))
+                            ->addParam('tawasulLibraryShelfItemID', $item['tawasulLibraryShelfItemID'])
+                            ->setURL('/modules/TawasulLibrary/library_manage_shelves_edit_items_delete.php');
+            });
+
+        $table->addCheckboxColumn('tawasulLibraryShelfItemID');
+
+        echo $form->getOutput();
+    }
+}

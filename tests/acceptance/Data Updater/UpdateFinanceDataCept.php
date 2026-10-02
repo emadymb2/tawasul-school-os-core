@@ -1,0 +1,106 @@
+<?php 
+/**
+ * @covers modules/TawasulDataUpdater/data_finance.php
+ * @covers modules/TawasulDataUpdater/data_finance_manage_edit.php
+ * @covers modules/TawasulDataUpdater/data_finance_manage_delete.php
+ * @covers modules/TawasulFinance/invoicees_manage.php
+ */
+$I = new AcceptanceTester($scenario);
+$I->wantTo('submit and approve a family data update');
+$I->loginAsAdmin();
+
+// Setup Invoiceees --------------------------------------
+$I->amOnModulePage('Finance', 'invoicees_manage.php');
+
+// Select ------------------------------------------------
+$I->amOnModulePage('Data Updater', 'data_finance.php');
+$I->seeBreadcrumb('Update Finance Data');
+
+$I->selectFromDropdown('tawasulFinanceInvoiceeID', 2);
+$I->click('Submit');
+
+// Simple Update ------------------------------------------
+$I->see('Update Data');
+
+$I->selectOption('invoiceTo', 'Family');
+
+$I->click('#content form[method="post"] [type=submit]');
+$I->seeSuccessMessage();
+
+$tawasulFinanceInvoiceeID = $I->grabValueFromURL('tawasulFinanceInvoiceeID');
+$I->amOnModulePage('Data Updater', 'data_finance.php', ['tawasulFinanceInvoiceeID' => $tawasulFinanceInvoiceeID]);
+
+// Complex Update ------------------------------------------
+$I->selectOption('invoiceTo', 'Company');
+
+$editFormValues = array(
+    'companyName'     => 'McTest Ltd.',
+    'companyContact'  => 'Testing McTest',
+    'companyAddress'  => '123 Ficticious Lane',
+    'companyEmail'    => 'test@testing.test',
+    'companyCCFamily' => 'Y',
+    'companyPhone'    => '12345678',
+    'companyAll'      => 'Y',
+);
+
+$I->submitForm('#content form[method="post"]', $editFormValues, 'Submit');
+
+// Confirm ------------------------------------------------
+$I->seeSuccessMessage();
+
+$tawasulFinanceInvoiceeID = $I->grabValueFromURL('tawasulFinanceInvoiceeID');
+
+$I->amOnModulePage('Data Updater', 'data_finance.php', ['tawasulFinanceInvoiceeID' => $tawasulFinanceInvoiceeID]);
+$I->seeInFormFields('#content form[method="post"]', $editFormValues);
+
+$tawasulFinanceInvoiceeUpdateID = $I->grabValueFrom("input[type='hidden'][name='existing']");
+
+// Accept ------------------------------------------------
+$I->amOnModulePage('Data Updater', 'data_finance_manage_edit.php', array('tawasulFinanceInvoiceeUpdateID' => $tawasulFinanceInvoiceeUpdateID));
+$I->seeBreadcrumb('Edit Request');
+
+$I->see('McTest Ltd.', 'td');
+$I->see('Testing McTest', 'td');
+$I->see('123 Ficticious Lane', 'td');
+$I->see('test@testing.test', 'td');
+$I->see('Y', 'td');
+$I->see('12345678', 'td');
+
+$I->click('Submit');
+$I->seeSuccessMessage();
+
+$tawasulFinanceInvoiceeUpdateID = $I->grabValueFromURL('tawasulFinanceInvoiceeUpdateID');
+
+// Delete ------------------------------------------------
+$I->amOnModulePage('Data Updater', 'data_finance_manage_delete.php', array('tawasulFinanceInvoiceeUpdateID' => $tawasulFinanceInvoiceeUpdateID));
+
+$I->click('Delete');
+$I->seeSuccessMessage();
+
+
+// Reset Data ------------------------------------------------
+$I->amOnModulePage('Data Updater', 'data_finance.php', ['tawasulFinanceInvoiceeID' => $tawasulFinanceInvoiceeID]);
+
+$I->selectOption('invoiceTo', 'Family');
+
+$I->click('#content form[method="post"] [type=submit]');
+$I->seeSuccessMessage();
+
+$tawasulFinanceInvoiceeUpdateID = $I->grabValueFrom("input[type='hidden'][name='existing']");
+
+// Accept ------------------------------------------------
+$I->amOnModulePage('Data Updater', 'data_finance_manage_edit.php', array('tawasulFinanceInvoiceeUpdateID' => $tawasulFinanceInvoiceeUpdateID));
+$I->seeBreadcrumb('Edit Request');
+
+$I->see('Family', 'td');
+
+$I->click('Submit');
+$I->seeSuccessMessage();
+
+$tawasulFinanceInvoiceeUpdateID = $I->grabValueFromURL('tawasulFinanceInvoiceeUpdateID');
+
+// Delete ------------------------------------------------
+$I->amOnModulePage('Data Updater', 'data_finance_manage_delete.php', array('tawasulFinanceInvoiceeUpdateID' => $tawasulFinanceInvoiceeUpdateID));
+
+$I->click('Delete');
+$I->seeSuccessMessage();

@@ -1,0 +1,46 @@
+{#<!--
+Tawasul: the flexible, open school platform
+Founded by Afhaam Technology at . Built by Afhaam Technology, Fiksu Tiliratkaisut OY and the Tawasul community (https://tawasul.fi/about/)
+Copyright © 2010, Tawasul Foundation
+Tawasul™, Tawasul Education Ltd. (Hong Kong)
+
+This is a Tawasul template file, written in HTML and Twig syntax.
+For info about editing, see: https://twig.symfony.com/doc/2.x/
+-->#}
+
+{% extends "index.twig.html" %}
+
+{% block head %}
+    {{ block('meta', 'head.twig.html') }}
+
+    <link rel="shortcut icon" type="image/x-icon" href="../favicon.ico"/>
+    <link rel='stylesheet' type='text/css' href='../resources/assets/css/theme.min.css' />
+    <link rel='stylesheet' type='text/css' href='../resources/assets/css/core.min.css' />
+    <link rel='stylesheet' type='text/css' href='../themes/tawasul/css/main.css' />
+    <script type="text/javascript" src="../lib/jquery/jquery.js"></script>
+    <script type="text/javascript" src="../lib/jquery/jquery-migrate.min.js"></script>
+    <script type="text/javascript" src="../lib/htmx/htmx.min.js"></script>
+    <script type='text/javascript' src='../resources/assets/js/core.js'></script>
+    <script type="text/javascript" src="../resources/assets/js/installer.js"></script>
+    <script type="text/javascript" src="../lib/htmx/alpine.focus.min.js" defer></script>
+    <script type="text/javascript" src="../lib/htmx/alpine.validate.min.js" defer></script>
+    <script type="text/javascript" src="../lib/htmx/alpine.min.js" defer></script>
+{% endblock head %}
+
+{% block beforePage %}
+
+    {% if step <= 1 %}
+    <div class="shadow bg-white rounded max-w-4xl mx-auto pt-4 pb-6 px-8 mb-6">
+        <h2>{{ __('Welcome To Tawasul') }}</h2>
+
+        <p style='padding-top: 7px'>
+            {{ __('Created by teachers, Tawasul is the school platform which solves real problems faced by educators every day.') }}
+            <br/><br/>
+            {{ __('Free, open source and flexible, Tawasul can morph to meet the needs of a huge range of schools.') }}
+            <br/><br/>
+            {{ __('For support, please visit %1$stawasul.fi%2$s.')|replace({'%1$s': "<a target='_blank' href='https://tawasul.fi/support'>", '%2$s': '</a>' })|raw }}
+        </p>
+    </div>
+    {% endif %}
+
+{% endblock beforePage %}

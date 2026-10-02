@@ -1,0 +1,31 @@
+{#<!--
+TawasulOS: the flexible, open school platform
+Founded by Ross Parker at ICHK Secondary. Built by Ross Parker, Sandra Kuipers and the TawasulOS community (https://tos.fiksutiliratkaisut.fi/about/)
+Copyright © 2010, TawasulOS Foundation
+TawasulOS™, TawasulOS Education Ltd. (Hong Kong)
+
+This is a TawasulOS template file, written in HTML and Twig syntax.
+For info about editing, see: https://twig.symfony.com/doc/2.x/
+-->#}
+
+{% if clientName %}
+<a target="_top" class="login block mb-4" href="{{ authURL }}" onclick="return addOAuth2LoginParams(this, event)">
+    <button type="button" class="w-full bg-white rounded-md shadow border border-gray-500 flex items-center px-2 py-1 mb-2 text-gray-600 hover:shadow-md hover:border-blue-600 hover:text-blue-600">
+        <img class="w-10 h-10" src="themes/{{ tawasulThemeName }}/img/{{ service }}-login.svg">
+        <span class="flex-grow text-lg">{{ __('Sign in with {service}', {'service': clientName } ) }}</span>
+    </button>
+</a>
+{% endif %}
+
+<script>
+function addOAuth2LoginParams(element, event)
+{
+    if (event) event.preventDefault();
+    var googleSchoolYear = document.getElementById('tawasulSchoolYearID') ? document.getElementById('tawasulSchoolYearID').value : '';
+    var googleLanguage = document.getElementById('tawasuli18nID') ? document.getElementById('tawasuli18nID').value : '';
+
+    var url = element.href.replace('&options=', '&options=' + encodeURIComponent(googleSchoolYear + ':' + googleLanguage + ':'));
+    window.location.href = url;
+    return false;
+}
+</script>

@@ -1,0 +1,41 @@
+details:
+    type: courseClassEnrolment
+    name: Course Enrolment by Class
+    table: tawasulCourseClassPerson
+    modes: { update: true, insert: true, export: true }
+access:
+    module: Timetable Admin
+    action: Course Enrolment by Class
+primaryKey:
+    tawasulCourseClassPersonID
+uniqueKeys:
+    - [ tawasulCourseClassID, tawasulPersonID ]
+table:
+    tawasulSchoolYearID:
+        name: "School Year"
+        desc: "School year name, as set in School Admin. Must already exist."
+        args: { filter: schoolyear, required: true, readonly: true, custom: true }
+        relationship: { table: tawasulSchoolYear, key: tawasulSchoolYearID, field: name  }
+    tawasulCourseID:
+        name: "Course"
+        desc: "Short Name"
+        args: { filter: string, required: true, readonly: true }
+        relationship: { table: tawasulCourse, key: tawasulCourseID, field: [ nameShort, tawasulSchoolYearID ]  }
+    tawasulCourseClassID:
+        name: "Class"
+        desc: "Short Name"
+        args: { filter: string, required: true }
+        relationship: { table: tawasulCourseClass, key: tawasulCourseClassID, field: [ nameShort, tawasulCourseID ]  }
+    tawasulPersonID:
+        name: "Participant"
+        desc: "Username or Email (if unique)"
+        args: { filter: nospaces, required: true }
+        relationship: { table: tawasulPerson, key: tawasulPersonID, field: username|email  }
+    role:
+        name: "Role"
+        desc: ""
+        args: { filter: string, required: true, custom: true }
+    reportable:
+        name: "Reportable?"
+        desc: "Should this class show in reports?"
+        args: { filter: yesno, custom: true }

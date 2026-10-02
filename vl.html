@@ -1,0 +1,783 @@
+
+<!DOCTYPE html>
+<html lang="ar-SA" dir="rtl" style="scroll-behavior: smooth;">
+    <head>
+                
+    <title>Tawasul OS  - TawasulOS</title>
+
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <meta http-equiv="content-type" content="text/html; charset=utf-8"/>
+    <meta http-equiv="content-language" content=""/>
+    <meta name="author" content="Ross Parker, International College Hong Kong"/>
+    <meta name="robots" content="noindex"/>
+    <meta name="Referrer‐Policy" value="no‐referrer | same‐origin"/>
+    <meta name="htmx-config" content='{"scrollBehavior":"smooth", "scrollIntoViewOnBoost": true}'>
+    <link rel="shortcut icon" type="image/x-icon" href="./favicon.ico"/>
+
+                                <link rel="stylesheet" href="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/lib/jquery-ui/css/jquery-ui.min.css?v=31.0.00.1790792139" type="text/css" media="all" />
+                                        <link rel="stylesheet" href="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/lib/jquery-timepicker/jquery.timepicker.css?v=31.0.00.1790792139" type="text/css" media="all" />
+                                        <link rel="stylesheet" href="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/themes/Tawasul OS Theme/css/main.css?v=2.2.00.1790792139" type="text/css" media="all" />
+                                        <link rel="stylesheet" href="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/resources/assets/css/theme.min.css?v=31.0.00.1790792139" type="text/css" media="all" />
+                                        <link rel="stylesheet" href="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/themes/Tawasul OS Theme/css/main_rtl.css?v=31.0.00.1790792139" type="text/css" media="all" />
+                                        <link rel="stylesheet" href="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/resources/assets/css/core.min.css?v=31.0.00.1790792139" type="text/css" media="all" />
+            
+
+                                <script type="text/javascript" src="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/lib/jquery/jquery.js?v=31.0.00.1790792139" ></script>
+                                        <script type="text/javascript" src="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/lib/jquery/jquery-migrate.min.js?v=31.0.00.1790792139" ></script>
+                                        <script type="text/javascript" src="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/lib/jquery-ui/js/jquery-ui.min.js?v=31.0.00.1790792139" ></script>
+                                        <script type="text/javascript" src="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/lib/htmx/htmx.min.js?v=31.0.00.1790792139" ></script>
+                                        <script type="text/javascript" src="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/resources/assets/js/core.min.js?v=31.0.00.1790792139" ></script>
+                                        <script type="text/javascript" src="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/lib/jquery-timepicker/jquery.timepicker.min.js?v=31.0.00.1790792139" defer></script>
+                                        <script type="text/javascript" src="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/lib/chained/jquery.chained.min.js?v=31.0.00.1790792139" defer></script>
+                                        <script type="text/javascript" src="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/lib/htmx/alpine.focus.min.js?v=31.0.00.1790792139" defer></script>
+                                        <script type="text/javascript" src="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/lib/htmx/alpine.sort.min.js?v=31.0.00.1790792139" defer></script>
+                                        <script type="text/javascript" src="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/lib/htmx/alpine.collapse.min.js?v=31.0.00.1790792139" defer></script>
+                                        <script type="text/javascript" src="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/lib/htmx/alpine.validate.min.js?v=31.0.00.1790792139" defer></script>
+                                        <script type="text/javascript" src="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/lib/htmx/alpine.min.js?v=31.0.00.1790792139" defer></script>
+                                        <script type="text/javascript" src="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/lib/Chart.js/3.0/chart.min.js?v=31.0.00.1790792139" ></script>
+            
+            
+    
+
+            </head>
+    <body x-data="{ modalOpen: false, modalType: 'none', modalAlert: false, globalShowHide: false }"
+        class="h-full flex flex-col font-sans body-gradient-teal" style=" " @modalwindow="modalType=$event.detail; modalOpen = true"
+        hx-indicator="#loadingIndicator" >
+
+        <div id="loadingIndicator" style="--d:900px;--angle:45deg;"></div>
+        <a id="top"></a>
+
+        
+        <div class="px-4 sm:px-6 lg:px-12 pb-24">
+
+                            <div id="header" class="relative flex justify-between items-center">
+
+                    <a id="header-logo" class="block my-4 max-w-xs sm:max-w-full leading-none" href="https://tos.fiksutiliratkaisut.fi/1/tawasul-os">
+                        <img class="block max-w-full h-20 mt-4 mb-4" alt="Tawasul School OS Logo" src="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/themes/Tawasul OS Theme/img/logo.svg" style="max-height:100px;" />
+                    </a>
+
+                    <div class="flex-grow flex items-center justify-end text-right text-sm text-teal-200">
+                                                                            
+                                            </div>
+                </div>
+
+                
+                    </div>
+        <div id="wrapOuter" class="flex-1 pt-24 bg-transparent-100" hx-history-elt>
+            <div id="wrap" class="px-0 sm:px-6 lg:px-12 -mt-48">
+                                
+                <div class="block lg:hidden mx-4 sm:mx-0 mb-4">
+                                                                                                                                                                                </div>
+
+                <div id="content-wrap" class="relative w-full min-h-1/2 flex content-start gap-4 lg:gap-6 flex flex-col lg:flex-row-reverse  clearfix">
+
+                                            <div id="sidebar" class="w-full lg:w-sidebar lg:min-w-72 lg:max-w-xs ">
+                                                        
+
+<div class="mx-4 sm:mx-0 relative sm:static" x-data="{moduleMenu: false}" @keydown.escape.window="moduleMenu = false" @click.outside="moduleMenu = false" x-init="moduleMenu = false">
+
+    
+                                        
+            <div class="shadow bg-white rounded px-6 mb-6 md:column-2 lg:column-1  pb-6 lg:pb-8">
+            <div class="column-no-break"><h2>تسجيل الدخول</h2>
+<form x-validate action="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/login.php?" method="post" autocomplete="off" enctype="multipart/form-data" class id="loginForm" x-data="{&#039;submitting&#039;: false, &#039;invalid&#039;: false, &#039;options&#039;: false}" x-data="{'advancedOptions': false, 'invalid': false, 'submitting': false}"  x-ref="form" @submit="$validate.submit; invalid = !$validate.isComplete($el); if (invalid) submitting = false;" @change.debounce.750ms="if (invalid) invalid = !$validate.isComplete($el); ">
+
+    
+        
+            <header class="relative flex justify-between items-end mb-2 ">
+                    </header>
+    
+            <input type="hidden" name="csrftoken" value="c11e268d5b2200984dceadad478ee497">
+            <input type="hidden" name="nonce" value="d771cdfff0bdd42fe734a6d4f5173f6b">
+            <input type="hidden" name="address" value="">
+            <input type="hidden" name="method" value="default">
+    
+        <section class="w-full">
+
+        
+            
+            <div id="" class="flex items-center justify-between " >
+    
+            
+                                <div class="text-sm py-2" >
+                    <button type="button" name value id="usernameLabel"  aria-label="اسم المستخدم أو البريد الإلكتروني" title="اسم المستخدم أو البريد الإلكتروني" tabindex="-1" class="text-sm py-2 rounded-l-md -mr-px px-3 py-2 text-sm sm:leading-5   bg-gray-100 hover:bg-gray-200 text-gray-800 inline-flex align-middle items-center border border-gray-400 gap-2 font-semibold shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 ">
+
+        <svg class="text-gray-600 block  size-5 " viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path fill-rule="evenodd" d="M7.5 6a4.5 4.5 0 1 1 9 0 4.5 4.5 0 0 1-9 0ZM3.751 20.105a8.25 8.25 0 0 1 16.498 0 .75.75 0 0 1-.437.695A18.683 18.683 0 0 1 12 22.5c-2.786 0-5.433-.608-7.812-1.7a.75.75 0 0 1-.437-.695Z" clip-rule="evenodd" />
+</svg>
+    
+    
+    </button>
+                </div>
+            
+                                <div class="w-full flex-grow py-2" >
+                    <div class="flex-grow relative flex items-center"  >
+    <input type="text" type="text" id="username" name="username" maxlength="50" aria-label="اسم المستخدم أو البريد الإلكتروني" placeholder="اسم المستخدم أو البريد الإلكتروني" x-validate.required data-error-msg="هذا الحقل مطلوب" 
+        class="w-full flex-grow py-2 rounded-r-md -ml-px w-full min-w-0 py-2  placeholder:text-gray-500  sm:text-sm sm:leading-5         text-gray-900 focus:ring-1 focus:ring-inset focus:ring-blue-500"
+        />
+
+    
+    
+    
+    </div>
+                </div>
+            
+            </div>
+        
+            
+            <div id="" class="flex items-center justify-between " >
+    
+            
+                                <div class="text-sm py-2" >
+                    <button type="button" name value id="passwordLabel"  aria-label="كلمة المرور" title="كلمة المرور" tabindex="-1" class="text-sm py-2 rounded-l-md -mr-px px-3 py-2 text-sm sm:leading-5   bg-gray-100 hover:bg-gray-200 text-gray-800 inline-flex align-middle items-center border border-gray-400 gap-2 font-semibold shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 ">
+
+        <svg class="text-gray-600 block  size-5 " viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+<path fill-rule="evenodd" d="M8 7a5 5 0 1 1 3.61 4.804l-1.903 1.903A1 1 0 0 1 9 14H8v1a1 1 0 0 1-1 1H6v1a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1v-2a1 1 0 0 1 .293-.707L8.196 8.39A5.002 5.002 0 0 1 8 7Zm5-3a.75.75 0 0 0 0 1.5A1.5 1.5 0 0 1 14.5 7 .75.75 0 0 0 16 7a3 3 0 0 0-3-3Z" clip-rule="evenodd" />
+</svg>
+    
+    
+    </button>
+                </div>
+            
+                                <div class="w-full flex-grow py-2" >
+                    
+
+<div x-data="{ show: true, policy: false, pw: '' }" class="flex-grow relative flex">
+    <input x-model.fill="pw" :type="show ? 'password' : 'text'" type="text" id="password" name="password" maxlength="30" aria-label="كلمة المرور" placeholder="كلمة المرور" x-validate.required data-error-msg="هذا الحقل مطلوب" autocomplete="off" 
+    class="w-full flex-grow py-2 rounded-r-md -ml-px w-full min-w-0  py-2 placeholder:text-gray-500  sm:text-sm sm:leading-5     text-gray-900 focus:ring-1 focus:ring-inset focus:ring-blue-500"
+        />
+
+    <span class="absolute top-0.5 right-2">
+
+        <button type="button" @click="show = !show" :class="{'hidden': !show, 'block':show }" tabindex="-1">
+        <svg class="pointer-events-none size-8 mt-px p-1.5 rounded bg-white text-gray-500 hover:text-gray-700" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+<path d="M8 9.5a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z" />
+<path fill-rule="evenodd" d="M1.38 8.28a.87.87 0 0 1 0-.566 7.003 7.003 0 0 1 13.238.006.87.87 0 0 1 0 .566A7.003 7.003 0 0 1 1.379 8.28ZM11 8a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" clip-rule="evenodd" />
+</svg>        </button>
+
+        <button type="button" @click="show = !show" :class="{'block': !show, 'hidden':show }" tabindex="-1">
+        <svg class="pointer-events-none size-8 mt-px p-1.5 rounded bg-white text-gray-500 hover:text-gray-700" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+<path fill-rule="evenodd" d="M3.28 2.22a.75.75 0 0 0-1.06 1.06l10.5 10.5a.75.75 0 1 0 1.06-1.06l-1.322-1.323a7.012 7.012 0 0 0 2.16-3.11.87.87 0 0 0 0-.567A7.003 7.003 0 0 0 4.82 3.76l-1.54-1.54Zm3.196 3.195 1.135 1.136A1.502 1.502 0 0 1 9.45 8.389l1.136 1.135a3 3 0 0 0-4.109-4.109Z" clip-rule="evenodd" />
+<path d="m7.812 10.994 1.816 1.816A7.003 7.003 0 0 1 1.38 8.28a.87.87 0 0 1 0-.566 6.985 6.985 0 0 1 1.113-2.039l2.513 2.513a3 3 0 0 0 2.806 2.806Z" />
+</svg>        </button>
+
+    </span>
+
+    </div>
+
+
+
+                </div>
+            
+            </div>
+        
+            
+            <div id="" class="flex items-center justify-between " x-show="options" x-transition x-cloak="on">
+    
+            
+                                <div class="text-sm py-2" >
+                    <button type="button" name value id="schoolYearLabel"  aria-label="العام الدراسي" title="العام الدراسي" tabindex="-1" class="text-sm py-2 rounded-l-md -mr-px px-3 py-2 text-sm sm:leading-5   bg-gray-100 hover:bg-gray-200 text-gray-800 inline-flex align-middle items-center border border-gray-400 gap-2 font-semibold shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 ">
+
+        <svg class="text-gray-600 block  size-5 " viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+<path d="M5.25 12a.75.75 0 0 1 .75-.75h.01a.75.75 0 0 1 .75.75v.01a.75.75 0 0 1-.75.75H6a.75.75 0 0 1-.75-.75V12ZM6 13.25a.75.75 0 0 0-.75.75v.01c0 .414.336.75.75.75h.01a.75.75 0 0 0 .75-.75V14a.75.75 0 0 0-.75-.75H6ZM7.25 12a.75.75 0 0 1 .75-.75h.01a.75.75 0 0 1 .75.75v.01a.75.75 0 0 1-.75.75H8a.75.75 0 0 1-.75-.75V12ZM8 13.25a.75.75 0 0 0-.75.75v.01c0 .414.336.75.75.75h.01a.75.75 0 0 0 .75-.75V14a.75.75 0 0 0-.75-.75H8ZM9.25 10a.75.75 0 0 1 .75-.75h.01a.75.75 0 0 1 .75.75v.01a.75.75 0 0 1-.75.75H10a.75.75 0 0 1-.75-.75V10ZM10 11.25a.75.75 0 0 0-.75.75v.01c0 .414.336.75.75.75h.01a.75.75 0 0 0 .75-.75V12a.75.75 0 0 0-.75-.75H10ZM9.25 14a.75.75 0 0 1 .75-.75h.01a.75.75 0 0 1 .75.75v.01a.75.75 0 0 1-.75.75H10a.75.75 0 0 1-.75-.75V14ZM12 9.25a.75.75 0 0 0-.75.75v.01c0 .414.336.75.75.75h.01a.75.75 0 0 0 .75-.75V10a.75.75 0 0 0-.75-.75H12ZM11.25 12a.75.75 0 0 1 .75-.75h.01a.75.75 0 0 1 .75.75v.01a.75.75 0 0 1-.75.75H12a.75.75 0 0 1-.75-.75V12ZM12 13.25a.75.75 0 0 0-.75.75v.01c0 .414.336.75.75.75h.01a.75.75 0 0 0 .75-.75V14a.75.75 0 0 0-.75-.75H12ZM13.25 10a.75.75 0 0 1 .75-.75h.01a.75.75 0 0 1 .75.75v.01a.75.75 0 0 1-.75.75H14a.75.75 0 0 1-.75-.75V10ZM14 11.25a.75.75 0 0 0-.75.75v.01c0 .414.336.75.75.75h.01a.75.75 0 0 0 .75-.75V12a.75.75 0 0 0-.75-.75H14Z" />
+<path fill-rule="evenodd" d="M5.75 2a.75.75 0 0 1 .75.75V4h7V2.75a.75.75 0 0 1 1.5 0V4h.25A2.75 2.75 0 0 1 18 6.75v8.5A2.75 2.75 0 0 1 15.25 18H4.75A2.75 2.75 0 0 1 2 15.25v-8.5A2.75 2.75 0 0 1 4.75 4H5V2.75A.75.75 0 0 1 5.75 2Zm-1 5.5c-.69 0-1.25.56-1.25 1.25v6.5c0 .69.56 1.25 1.25 1.25h10.5c.69 0 1.25-.56 1.25-1.25v-6.5c0-.69-.56-1.25-1.25-1.25H4.75Z" clip-rule="evenodd" />
+</svg>
+    
+    
+    </button>
+                </div>
+            
+                                <div class="w-full flex-grow py-2" >
+                    <div id="tawasulSchoolYearIDSearchSelect" x-data="{
+        allOptions: [],
+        options: [],
+        search: '',
+        isOpen: false,
+        openedWithKeyboard: false,
+        selectedValue: '026',
+        selectedOption: null,
+        getOptions() {
+            Array.from(this.$refs.hiddenInput.querySelectorAll('optgroup')).forEach((optGroup) => { 
+                    var group = {
+                        label: optGroup.label,
+                        options: [],
+                    };
+
+                    Array.from(optGroup.children)
+                        .filter((option) => option.value != '')
+                        .forEach((option) => { 
+                            option.group = optGroup.label;
+                            group.options.push(option);
+                        });
+
+                    this.selectedOption = group.options.find(element => element.value == this.selectedValue) ?? this.selectedOption;
+                    this.allOptions.push(group);
+                }
+            );
+        
+            this.options = this.allOptions;
+        },
+        setSelectedOption(option) {
+            if (option == null) return;
+            this.isOpen = false;
+            this.selectedOption = option;
+            this.search = '';
+            this.openedWithKeyboard = false;
+
+            this.$refs.hiddenInput.value = option.value;
+            this.$refs.hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
+            
+            $focus.focus(this.$refs.searchSelect)
+        },
+        clearSelectedOption() {
+            this.selectedOption = null;
+            this.$refs.hiddenInput.value = null;
+            this.$refs.hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
+            this.$refs.searchSelect.blur();
+        },
+        getFilteredOptions(query) {
+            var search = query.toLowerCase().split(' ');
+
+            this.options = this.allOptions
+                .filter((element) => 
+                    element.options.some((option) => search.every(v => option.label.toLowerCase().includes(v)) ))
+                .map(element => {
+                    return Object.assign({}, element, {options : element.options.filter((option) => search.every(v => option.label.toLowerCase().includes(v)))});
+
+                }); 
+            
+            if (this.options.length === 0) {
+                this.$refs.noResultsMessage.classList.remove('hidden')
+            } else {
+                this.$refs.noResultsMessage.classList.add('hidden')
+            }
+        },
+        handleKeydownOnOptions(event) {
+            // if the user presses backspace or the alpha-numeric keys, focus on the search field
+            if ((event.keyCode >= 65 && event.keyCode <= 90) || (event.keyCode >= 48 && event.keyCode <= 57) || event.keyCode === 8) {
+                this.$refs.searchField.focus()
+            }
+        },
+        toggleSelect(toggle) {
+            this.isOpen = toggle;
+            if (toggle) {
+                $focus.focus(this.$refs.searchField);
+                this.$refs.searchField.focus()
+                this.search = '';
+                this.getFilteredOptions('');
+            }
+        },
+    }" class="relative flex flex-col gap-1 flex-1" x-on:keydown="handleKeydownOnOptions($event)" x-on:keydown.esc.window="toggleSelect(false), openedWithKeyboard = false" x-init="getOptions()" >
+
+        <!-- trigger button  -->
+        <button type="button" class="w-full flex-grow py-2 rounded-r-md -ml-px inner-input inline-flex w-full overflow-hidden items-center justify-between min-w-16 h-[2.375rem] bg-white border border-outline py-2 px-3 text-gray-900  placeholder:text-gray-500 focus:border-blue-500 focus-within:border-blue-500 focus:ring-1 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-5 transition  " role="combobox" aria-controls="tawasulSchoolYearIDList" aria-haspopup="tawasulSchoolYearIDList listbox" x-on:click="toggleSelect(!isOpen)" x-on:keydown.down.prevent="openedWithKeyboard = true" x-on:keydown.enter.prevent="openedWithKeyboard = true" x-on:keydown.space.prevent="openedWithKeyboard = true" x-bind:aria-expanded="isOpen || openedWithKeyboard" x-bind:aria-label="selectedOption ? selectedOption.label : ''" x-ref="searchSelect" >
+
+            <span class="flex-1 w-24 text-left text-sm sm:leading-5 font-normal truncate" x-text="selectedOption ? selectedOption.label : ''"></span>
+
+            <!-- Chevron  -->
+            <svg x-cloak x-show="selectedOption == null" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="size-5 text-gray-500" aria-hidden="true">
+                <path fill-rule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/>
+            </svg>
+
+            <svg x-cloak x-show="selectedOption != null" x-on:click.stop="clearSelectedOption()" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="size-5 text-gray-500 hover:text-red-700 transition-colors" aria-hidden="true">
+                <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+            </svg>
+        </button>
+
+        <!-- Hidden Input To Grab The Selected Value  -->
+        <select class="hidden invisible" id="tawasulSchoolYearID" name="tawasulSchoolYearID" aria-label="العام الدراسي" value="026"  x-ref="hiddenInput">
+            <option value=""></option>
+
+                            <optgroup label="">
+
+                                <option value="025"   >2025-2026</option>
+                                <option value="026" selected  >2026-2027</option>
+                
+                </optgroup>
+
+            
+            
+        </select>
+
+        <div x-cloak x-show="isOpen || openedWithKeyboard" id="tawasulSchoolYearIDList" class="absolute top-0 left-0 z-50 w-full min-w-52 rounded-md bg-white " role="listbox" aria-label="list" x-on:click.outside="toggleSelect(false); openedWithKeyboard = false" x-on:keydown.down.prevent="$focus.wrap().next()" x-on:keydown.up.prevent="$focus.wrap().previous()" x-transition:enter.opacity.duration.75ms x-transition:leave.opacity.duration.0ms x-trap="openedWithKeyboard"
+        style="display:none;">
+
+            <!-- Search  -->
+            <div class="relative flex gap-2 max-w-full ">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.5" class="absolute ml-3 top-1/2 size-5 -translate-y-1/2 text-on-surface/50 dark:text-on-surface-dark/50" aria-hidden="true" >
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>
+                </svg>
+                <input type="text" class="w-full border  focus:border-blue-500 focus:ring-1 focus:ring-inset focus:ring-blue-500 rounded-t-md py-2 pl-10 text-sm text-on-surface focus:outline-hidden focus-visible:border-primary disabled:cursor-not-allowed disabled:opacity-75 dark:text-on-surface-dark dark:focus-visible:border-primary-dark" name="searchField" aria-label="بحث" x-on:input="getFilteredOptions($el.value)" x-model="search" x-ref="searchField" placeholder="بحث" />
+            </div>
+
+            <!-- Options  -->
+            <ul class="list-none flex w-fit min-w-full max-h-80 flex-col overflow-x-hidden overflow-y-auto m-0 p-1 border -mt-px rounded-b-md bg-white shadow-lg" style="max-width: max(100%, 24rem);">
+                <li class="hidden px-4 py-2 text-sm text-on-surface dark:text-on-surface-dark" x-ref="noResultsMessage">
+                    <span>لا توجد نتائج</span>
+                </li>
+
+                <template x-for="(group, groupIndex) in options" x-bind:key="group.label">
+
+                    <ul x-from-template class="list-none flex flex-col m-0 p-1">
+                        <template x-if="group.label != ''">
+                            <li x-from-template x-text="group.label" class="px-3 py-1 text-sm  font-semibold"></li>
+                        </template>
+
+                        <template x-for="(item, index) in group.options" x-bind:key="item.value">
+
+                            <li x-from-template class="combobox-option inline-flex justify-between rounded px-3 py-1 text-sm  hover:bg-blue-500 hover:text-white focus:bg-blue-500 focus:text-white cursor-pointer whitespace-nowrap" role="option" x-on:click="setSelectedOption(item)" x-on:keydown.enter="setSelectedOption(item)" x-bind:id="'option-' + index" tabindex="0" :class="{'bg-gray-300 text-gray-900 hover:text-white' : selectedOption == item , 'hover:text-white': selectedOption != item, 'pl-8' : group.label != '' }">
+
+                                <!-- Label  -->
+                                <span x-bind:class="selectedOption == item ? 'font-medium' : null" x-text="item.label" class="overflow-hidden text-ellipsis"></span>
+
+                                <!-- Screen reader 'selected' indicator  -->
+                                <span class="sr-only" x-text="selectedOption == item ? 'selected' : null"></span>
+
+                                <!-- Checkmark  -->
+                                <svg x-cloak x-show="selectedOption == item" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" class="size-4" aria-hidden="true">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5">
+                                </svg>
+                            </li>
+
+                        </template>
+
+                    </ul>
+
+                </template>
+
+            </ul>
+        </div>
+ 
+</div>
+
+                </div>
+            
+            </div>
+        
+            
+            <div id="" class="flex items-center justify-between " x-show="options" x-transition x-cloak="on">
+    
+            
+                                <div class="text-sm py-2" >
+                    <button type="button" name value id="languageLabel"  aria-label="اللغة" title="اللغة" tabindex="-1" class="text-sm py-2 rounded-l-md -mr-px px-3 py-2 text-sm sm:leading-5   bg-gray-100 hover:bg-gray-200 text-gray-800 inline-flex align-middle items-center border border-gray-400 gap-2 font-semibold shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 ">
+
+        <svg class="text-gray-600 block  size-5 " viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+    <path d="M7.75 2.75a.75.75 0 0 0-1.5 0v1.258a32.987 32.987 0 0 0-3.599.278.75.75 0 1 0 .198 1.487A31.545 31.545 0 0 1 8.7 5.545 19.381 19.381 0 0 1 7 9.56a19.418 19.418 0 0 1-1.002-2.05.75.75 0 0 0-1.384.577 20.935 20.935 0 0 0 1.492 2.91 19.613 19.613 0 0 1-3.828 4.154.75.75 0 1 0 .945 1.164A21.116 21.116 0 0 0 7 12.331c.095.132.192.262.29.391a.75.75 0 0 0 1.194-.91c-.204-.266-.4-.538-.59-.815a20.888 20.888 0 0 0 2.333-5.332c.31.031.618.068.924.108a.75.75 0 0 0 .198-1.487 32.832 32.832 0 0 0-3.599-.278V2.75Z" />
+    <path fill-rule="evenodd" d="M13 8a.75.75 0 0 1 .671.415l4.25 8.5a.75.75 0 1 1-1.342.67L15.787 16h-5.573l-.793 1.585a.75.75 0 1 1-1.342-.67l4.25-8.5A.75.75 0 0 1 13 8Zm2.037 6.5L13 10.427 10.964 14.5h4.073Z" clip-rule="evenodd" />
+</svg>
+    
+    
+    </button>
+                </div>
+            
+                                <div class="w-full flex-grow py-2" >
+                    <div id="tawasuli18nIDSearchSelect" x-data="{
+        allOptions: [],
+        options: [],
+        search: '',
+        isOpen: false,
+        openedWithKeyboard: false,
+        selectedValue: '0011',
+        selectedOption: null,
+        getOptions() {
+            Array.from(this.$refs.hiddenInput.querySelectorAll('optgroup')).forEach((optGroup) => { 
+                    var group = {
+                        label: optGroup.label,
+                        options: [],
+                    };
+
+                    Array.from(optGroup.children)
+                        .filter((option) => option.value != '')
+                        .forEach((option) => { 
+                            option.group = optGroup.label;
+                            group.options.push(option);
+                        });
+
+                    this.selectedOption = group.options.find(element => element.value == this.selectedValue) ?? this.selectedOption;
+                    this.allOptions.push(group);
+                }
+            );
+        
+            this.options = this.allOptions;
+        },
+        setSelectedOption(option) {
+            if (option == null) return;
+            this.isOpen = false;
+            this.selectedOption = option;
+            this.search = '';
+            this.openedWithKeyboard = false;
+
+            this.$refs.hiddenInput.value = option.value;
+            this.$refs.hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
+            
+            $focus.focus(this.$refs.searchSelect)
+        },
+        clearSelectedOption() {
+            this.selectedOption = null;
+            this.$refs.hiddenInput.value = null;
+            this.$refs.hiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
+            this.$refs.searchSelect.blur();
+        },
+        getFilteredOptions(query) {
+            var search = query.toLowerCase().split(' ');
+
+            this.options = this.allOptions
+                .filter((element) => 
+                    element.options.some((option) => search.every(v => option.label.toLowerCase().includes(v)) ))
+                .map(element => {
+                    return Object.assign({}, element, {options : element.options.filter((option) => search.every(v => option.label.toLowerCase().includes(v)))});
+
+                }); 
+            
+            if (this.options.length === 0) {
+                this.$refs.noResultsMessage.classList.remove('hidden')
+            } else {
+                this.$refs.noResultsMessage.classList.add('hidden')
+            }
+        },
+        handleKeydownOnOptions(event) {
+            // if the user presses backspace or the alpha-numeric keys, focus on the search field
+            if ((event.keyCode >= 65 && event.keyCode <= 90) || (event.keyCode >= 48 && event.keyCode <= 57) || event.keyCode === 8) {
+                this.$refs.searchField.focus()
+            }
+        },
+        toggleSelect(toggle) {
+            this.isOpen = toggle;
+            if (toggle) {
+                $focus.focus(this.$refs.searchField);
+                this.$refs.searchField.focus()
+                this.search = '';
+                this.getFilteredOptions('');
+            }
+        },
+    }" class="relative flex flex-col gap-1 flex-1" x-on:keydown="handleKeydownOnOptions($event)" x-on:keydown.esc.window="toggleSelect(false), openedWithKeyboard = false" x-init="getOptions()" >
+
+        <!-- trigger button  -->
+        <button type="button" class="w-full flex-grow py-2 rounded-r-md -ml-px inner-input inline-flex w-full overflow-hidden items-center justify-between min-w-16 h-[2.375rem] bg-white border border-outline py-2 px-3 text-gray-900  placeholder:text-gray-500 focus:border-blue-500 focus-within:border-blue-500 focus:ring-1 focus:ring-inset focus:ring-blue-500 sm:text-sm sm:leading-5 transition  " role="combobox" aria-controls="tawasuli18nIDList" aria-haspopup="tawasuli18nIDList listbox" x-on:click="toggleSelect(!isOpen)" x-on:keydown.down.prevent="openedWithKeyboard = true" x-on:keydown.enter.prevent="openedWithKeyboard = true" x-on:keydown.space.prevent="openedWithKeyboard = true" x-bind:aria-expanded="isOpen || openedWithKeyboard" x-bind:aria-label="selectedOption ? selectedOption.label : ''" x-ref="searchSelect" >
+
+            <span class="flex-1 w-24 text-left text-sm sm:leading-5 font-normal truncate" x-text="selectedOption ? selectedOption.label : ''"></span>
+
+            <!-- Chevron  -->
+            <svg x-cloak x-show="selectedOption == null" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="size-5 text-gray-500" aria-hidden="true">
+                <path fill-rule="evenodd" d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" clip-rule="evenodd"/>
+            </svg>
+
+            <svg x-cloak x-show="selectedOption != null" x-on:click.stop="clearSelectedOption()" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" class="size-5 text-gray-500 hover:text-red-700 transition-colors" aria-hidden="true">
+                <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+            </svg>
+        </button>
+
+        <!-- Hidden Input To Grab The Selected Value  -->
+        <select class="hidden invisible" id="tawasuli18nID" name="tawasuli18nID" aria-label="اللغة" value="0011"  x-ref="hiddenInput">
+            <option value=""></option>
+
+                            <optgroup label="">
+
+                                <option value="0011" selected  >العربية - المملكة العربية السعودية (الافتراضي في النظام)</option>
+                
+                </optgroup>
+
+            
+            
+        </select>
+
+        <div x-cloak x-show="isOpen || openedWithKeyboard" id="tawasuli18nIDList" class="absolute top-0 left-0 z-50 w-full min-w-52 rounded-md bg-white " role="listbox" aria-label="list" x-on:click.outside="toggleSelect(false); openedWithKeyboard = false" x-on:keydown.down.prevent="$focus.wrap().next()" x-on:keydown.up.prevent="$focus.wrap().previous()" x-transition:enter.opacity.duration.75ms x-transition:leave.opacity.duration.0ms x-trap="openedWithKeyboard"
+        style="display:none;">
+
+            <!-- Search  -->
+            <div class="relative flex gap-2 max-w-full ">
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="1.5" class="absolute ml-3 top-1/2 size-5 -translate-y-1/2 text-on-surface/50 dark:text-on-surface-dark/50" aria-hidden="true" >
+                    <path stroke-linecap="round" stroke-linejoin="round" d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"/>
+                </svg>
+                <input type="text" class="w-full border  focus:border-blue-500 focus:ring-1 focus:ring-inset focus:ring-blue-500 rounded-t-md py-2 pl-10 text-sm text-on-surface focus:outline-hidden focus-visible:border-primary disabled:cursor-not-allowed disabled:opacity-75 dark:text-on-surface-dark dark:focus-visible:border-primary-dark" name="searchField" aria-label="بحث" x-on:input="getFilteredOptions($el.value)" x-model="search" x-ref="searchField" placeholder="بحث" />
+            </div>
+
+            <!-- Options  -->
+            <ul class="list-none flex w-fit min-w-full max-h-80 flex-col overflow-x-hidden overflow-y-auto m-0 p-1 border -mt-px rounded-b-md bg-white shadow-lg" style="max-width: max(100%, 24rem);">
+                <li class="hidden px-4 py-2 text-sm text-on-surface dark:text-on-surface-dark" x-ref="noResultsMessage">
+                    <span>لا توجد نتائج</span>
+                </li>
+
+                <template x-for="(group, groupIndex) in options" x-bind:key="group.label">
+
+                    <ul x-from-template class="list-none flex flex-col m-0 p-1">
+                        <template x-if="group.label != ''">
+                            <li x-from-template x-text="group.label" class="px-3 py-1 text-sm  font-semibold"></li>
+                        </template>
+
+                        <template x-for="(item, index) in group.options" x-bind:key="item.value">
+
+                            <li x-from-template class="combobox-option inline-flex justify-between rounded px-3 py-1 text-sm  hover:bg-blue-500 hover:text-white focus:bg-blue-500 focus:text-white cursor-pointer whitespace-nowrap" role="option" x-on:click="setSelectedOption(item)" x-on:keydown.enter="setSelectedOption(item)" x-bind:id="'option-' + index" tabindex="0" :class="{'bg-gray-300 text-gray-900 hover:text-white' : selectedOption == item , 'hover:text-white': selectedOption != item, 'pl-8' : group.label != '' }">
+
+                                <!-- Label  -->
+                                <span x-bind:class="selectedOption == item ? 'font-medium' : null" x-text="item.label" class="overflow-hidden text-ellipsis"></span>
+
+                                <!-- Screen reader 'selected' indicator  -->
+                                <span class="sr-only" x-text="selectedOption == item ? 'selected' : null"></span>
+
+                                <!-- Checkmark  -->
+                                <svg x-cloak x-show="selectedOption == item" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" stroke="currentColor" fill="none" stroke-width="2" class="size-4" aria-hidden="true">
+                                    <path stroke-linecap="round" stroke-linejoin="round" d="m4.5 12.75 6 6 9-13.5">
+                                </svg>
+                            </li>
+
+                        </template>
+
+                    </ul>
+
+                </template>
+
+            </ul>
+        </div>
+ 
+</div>
+
+                </div>
+            
+            </div>
+        
+            
+            <div id="" class="flex justify-between items-center py-2 " >
+    
+            
+                                <div class="flex-1" >
+                    <span class="small"><a class="text-xs font-semibold text-gray-700 hover:text-blue-600 hover:underline" href="/1/tawasul-os/index.php?q=passwordReset.php">هل نسيت كلمة المرور؟</a></span>
+                </div>
+            
+                                <div class="" >
+                    <div x-data="{ 'toggle': 'N', 'disabled': '', 'onValue': 'Y', toggleSwitch() { if (this.disabled == true) return; this.toggle == this.onValue ? this.toggle = 'N' :  this.toggle = 'Y'; } }" class=" flex items-center justify-end mx-1 gap-2" x-id="['toggle-label']" @click="options = !options" >
+
+    <input id="options" type="hidden" name="options" :value="toggle" value="N" x-model="toggle; $dispatch('change')">
+    
+    <label id="optionsLabel" for="options" @click="$refs.toggle.click(); $refs.toggle.focus()" :id="$id('toggle-label')" class=" font-medium text-xs text-gray-900" >
+        <span x-text="toggle == onValue ? 'الخيارات' : 'الخيارات'">
+            الخيارات        </span>
+    </label>
+
+            
+    
+    <button type="button" role="switch" x-ref="toggle" x-model="toggle" @click="toggleSwitch()"
+        class="relative inline-flex w-8 rounded-full border py-0.5 transition duration-300 ease-in-out " 
+        :class="toggle == onValue ? 'border-blue-500 bg-blue-400' : 'border-gray-400 bg-gray-300'" >
+        
+        <span aria-hidden="true" :class="toggle == onValue ? 'border-blue-500' : 'border-gray-400'" 
+            style="transform: translateX(-0.2rem);"
+            :style="toggle == onValue ? 'transform: translateX(-0.95rem);' : 'transform: translateX(-0.2rem);'" 
+            class="border bg-white h-3 w-3 rounded-full transition duration-300 ease-in-out " >
+        </span>
+    </button>
+
+    </div>
+
+                </div>
+            
+            </div>
+        
+            
+            <div id="" class="flex justify-end items-center " >
+    
+            
+                                <div class="text-right flex-1 mt-1 text-right" >
+                        <button type="submit" name="تسجيل الدخول" value="تسجيل الدخول" id="تسجيل الدخول"  x-data="{ submitDisabled: false }" x-bind:disabled="submitDisabled" x-on:submit="submitDisabled = true" @click="submitting = true" :class="{'submitted bg-gray-100': submitting, ' border-gray-800 bg-gray-800 hover:bg-gray-900 text-white' : !submitting}" class="text-right flex-1 mt-1 text-right rounded-md px-4 py-2 text-sm sm:leading-5  inline-block align-middle items-center px-8 font-semibold shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 border  border-gray-800 bg-gray-800 hover:bg-gray-900 text-white" />
+        <span :class="{'opacity-0': submitting}">
+            تسجيل الدخول        </span>
+    </button>
+
+                </div>
+            
+            </div>
+        
+    </section>
+    
+    
+</form>
+</div>
+        </div>
+        
+        
+    </div>
+
+
+                                                    </div>
+
+                    
+                    <div id="content" class="max-w-full bg-white pb-6 w-full shadow  sm:rounded lg:flex-1 px-4 sm:px-8">
+
+                        <div id="content-inner" class="h-full">
+
+                            
+                                
+<div class="w-full flex flex-between mb-4">
+    
+
+    </div>
+
+<div id="alerts" class="hidden lg:block">
+                                                    </div>
+
+
+
+
+
+                                
+<div class="flex flex-wrap mb-4 -mx-2 items-stretch ">
+    <div class="w-full mx-2 my-2">
+        <h2>ترحيب</h2>
+        <p>
+        Welcome to TawasulOS, the free, open, flexible school platform. Designed by teachers for learning, TawasulOS gives you the school tools you need.
+        </p>
+    </div>
+
+            
+
+    <div class="w-full sm:w-1/2 px-2 pb-4">
+        <a href="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/?q=/modules/TawasulAdmissions/applicationFormSelect.php" class="block border shadow-sm rounded bg-white h-full text-gray-800 hover:shadow-md hover:text-teal-800 hover:border-teal-600">
+            <div class="block m-0 pt-4 px-4 text-base uppercase font-bold font-sans tracking-tight">
+                طلبات الطلاب
+                <svg class="size-6 float-right -mt-px fill-current" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+<path fill-rule="evenodd" d="M15.28 9.47a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 1 1-1.06-1.06L13.69 10 9.97 6.28a.75.75 0 0 1 1.06-1.06l4.25 4.25ZM6.03 5.22l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L8.69 10 4.97 6.28a.75.75 0 0 1 1.06-1.06Z" clip-rule="evenodd" />
+</svg>
+            </div>
+            <p class="mb-1 p-4 text-gray-700 leading-tight">
+                                    يمكن لأولياء أمور الطلاب الراغبين في الدراسة في Tawasul School OS استخدام نموذجنا الإلكتروني  لبدء إجراءات التقديم.
+                            </p>
+        </a>
+    </div>
+
+
+
+    
+            
+
+    <div class="w-full sm:w-1/2 px-2 pb-4">
+        <a href="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/?q=/modules/TawasulStaff/applicationForm_jobOpenings_view.php" class="block border shadow-sm rounded bg-white h-full text-gray-800 hover:shadow-md hover:text-teal-800 hover:border-teal-600">
+            <div class="block m-0 pt-4 px-4 text-base uppercase font-bold font-sans tracking-tight">
+                طلبات الموظفين
+                <svg class="size-6 float-right -mt-px fill-current" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+<path fill-rule="evenodd" d="M15.28 9.47a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 1 1-1.06-1.06L13.69 10 9.97 6.28a.75.75 0 0 1 1.06-1.06l4.25 4.25ZM6.03 5.22l4.25 4.25a.75.75 0 0 1 0 1.06l-4.25 4.25a.75.75 0 0 1-1.06-1.06L8.69 10 4.97 6.28a.75.75 0 0 1 1.06-1.06Z" clip-rule="evenodd" />
+</svg>
+            </div>
+            <p class="mb-1 p-4 text-gray-700 leading-tight">
+                                    يمكن للأفراد المهتمين بالعمل في Tawasul School OS استخدام  النموذج الإلكتروني للاطلاع على الوظائف الشاغرة وبدء عملية التوظيف.
+                            </p>
+        </a>
+    </div>
+
+
+    
+    
+    
+    
+    
+    </div>
+
+                                
+                                                    </div>
+                    </div>
+
+                </div>
+
+                
+                                            </div>
+
+            
+
+                            <div class="relative text-sm text-gray-700 px-6 lg:px-12 mt-4 pt-2 pb-6 leading-normal border-t border-gray-300 text-right">
+                    
+<span class="inline-block font-bold">
+    مدعوم بواسطة <a class="text-teal-800" target='_blank' href='https://tos.fiksutiliratkaisut.fi'>TawasulOS</a> v31.0.00<br/>
+</span> 
+<br/>
+<span class="text-xs">
+    أسسها روس باركر في مدرسة ICHK الثانوية | بناه Ross Parker وSandra Kuipers ومجتمع TawasulOS<br/>
+    Copyright © <a class="text-teal-800" target='_blank' href='http://tos.fiksutiliratkaisut.fi'>TawasulOS Foundation</a> 2010-2026 | TawasulOS™ of TawasulOS Education Ltd. (Hong Kong)<br/>
+    أُنشئ بموجب <a class="text-teal-800" target='_blank' href='https://www.gnu.org/licenses/gpl.html'>GNU GPL</a> |
+    <a class="text-teal-800" target='_blank' href='https://tos.fiksutiliratkaisut.fi/about/#ourTeam'>الاعتمادات</a> | 
+    <a class="text-teal-800" target='_blank' href='https://tos.fiksutiliratkaisut.fi/about/#translators'>المترجمون</a> | 
+    <a class="text-teal-800" target='_blank' href='https://tos.fiksutiliratkaisut.fi/support/'>الدعم</a>
+    <br/>
+    <br/>
+</span>
+
+
+                    <img class="absolute top-0 -mt-1 hidden sm:block w-32 left-0 sm:ml-0 md:ml-16" alt="Logo text-xs" src="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/themes/Tawasul OS Theme/img/tawasul-white.svg"/>
+                </div>
+            
+        </div>
+
+                
+
+        
+                
+
+                <script type="text/javascript">window.TawasulOS = {"config":{"tinymce":{"locale":"ar-SA","locale_rtl":"rtl","cache_string":"1790792139","valid_elements":"br[style|class],strong[style|class],b[style|class],em[style|class],span[style|class],p[style|class],address[style|class],pre[style|class],h1[style|class],h2[style|class],h3[style|class],h4[style|class],h5[style|class],h6[style|class],table[style|class],thead[style|class],tbody[style|class],tfoot[style|class],tr[style|class],td[style|class|colspan|rowspan],ol[style|class],ul[style|class],li[style|class],blockquote[style|class],a[style|class|target|href],img[style|class|src|width|height],video[style|class],source[style|class],hr[style|class],iframe[style|class|width|height|src|frameborder|allowfullscreen],embed[style|class],div[style|class],sup[style|class],sub[style|class],code[style|class],details[style|class],summary[style|class],pagebreak,columnbreak","file_types":"acorn, ai, csv, doc, docx, gif, jpeg, jpg, key, numbers, ods, odt, pages, pdf, png, ppt, pptx, psd, rtf, skp, txt, xcf, xls, xlsx","file_types_label":"\u0623\u0646\u0648\u0627\u0639 \u0627\u0644\u0645\u0644\u0641\u0627\u062a \u0627\u0644\u0645\u062f\u0639\u0648\u0645\u0629","delete_confirm":"\u0647\u0644 \u0623\u0646\u062a \u0645\u062a\u0623\u0643\u062f \u0623\u0646\u0643 \u062a\u0631\u064a\u062f \u062d\u0630\u0641 \u0647\u0630\u0627 \u0627\u0644\u0639\u0646\u0635\u0631\u061f","advanced_options":"\u062e\u064a\u0627\u0631\u0627\u062a \u0645\u062a\u0642\u062f\u0645\u0629","select_file_label":"\u0623\u062f\u062e\u0644 \u0639\u0646\u0648\u0627\u0646 URL \u0623\u0648 \u0627\u062e\u062a\u0631 \u0645\u0644\u0641\u064b\u0627","select_file":"\u0627\u062e\u062a\u064a\u0627\u0631 \u0645\u0644\u0641","insert_file":"\u0625\u062f\u0631\u0627\u062c \u0645\u0644\u0641","invalid_file":"\u0646\u0648\u0639 \u0645\u0644\u0641 \u063a\u064a\u0631 \u0635\u0627\u0644\u062d","uploading":"\u062c\u0627\u0631\u064a \u0627\u0644\u0631\u0641\u0639","save":"\u062d\u0641\u0638","download":"\u062a\u0646\u0632\u064a\u0644","cancel":"\u0625\u0644\u063a\u0627\u0621","delete":"\u062d\u0630\u0641","view":"\u0639\u0631\u0636","html":"HTML","file":"\u0627\u0644\u0645\u0644\u0641","open":"\u0645\u0641\u062a\u0648\u062d","error":"\u062e\u0637\u0623"},"htmx":{"unload_confirm":"\u0647\u0644 \u0623\u0646\u062a \u0645\u062a\u0623\u0643\u062f \u0623\u0646\u0643 \u062a\u0631\u064a\u062f \u0645\u063a\u0627\u062f\u0631\u0629 \u0647\u0630\u0647 \u0627\u0644\u0635\u0641\u062d\u0629\u061f \u0642\u062f \u0644\u0627 \u064a\u062a\u0645 \u062d\u0641\u0638 \u0627\u0644\u0645\u0639\u0644\u0648\u0645\u0627\u062a \u0627\u0644\u062a\u064a \u0623\u062f\u062e\u0644\u062a\u0647\u0627."}}};</script>
+                    <script type="text/javascript" src="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/lib/jquery-form/jquery.form.js?v=31.0.00.1790792139"></script>
+                    <script type="text/javascript" src="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/lib/jquery-autosize/jquery.autosize.min.js?v=31.0.00.1790792139"></script>
+                    <script type="text/javascript" src="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/lib/jquery-tokeninput/src/jquery.tokeninput.js?v=31.0.00.1790792139"></script>
+                    <script type="text/javascript" src="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/resources/assets/js/setup.js?v=31.0.00.1790792139"></script>
+                    <script type="text/javascript" src="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/lib/tinymce/tinymce.min.js?v=31.0.00.1790792139"></script>
+                    <script type="text/javascript" src="https://tos.fiksutiliratkaisut.fi/1/tawasul-os/themes/Tawasul OS Theme/js/common.js?v=2.2.00.1790792139"></script>
+    
+<div id="modal" x-show="modalOpen" x-trap.inert.noreturn="modalOpen" @keydown.escape.window="modalOpen = false" class="fixed inset-0 z-50 overflow-y-auto" style="display:none;" aria-labelledby="modal-title" role="dialog" aria-modal="true" >
+
+    <div class="flex items-center content-center justify-center min-h-screen px-4 text-center sm:block sm:p-0 overflow-hidden">
+
+        <div x-cloak @click="modalOpen = false" x-show="modalOpen" 
+            x-transition:enter="transition ease-out duration-150 transform"
+            x-transition:enter-start="opacity-0" 
+            x-transition:enter-end="opacity-100"
+            x-transition:leave="transition ease-in duration-200 transform"
+            x-transition:leave-start="opacity-100" 
+            x-transition:leave-end="opacity-0"
+            class="fixed inset-0 transition bg-black bg-opacity-40  " 
+            aria-hidden="true"
+        ></div>
+
+        <div x-cloak x-show="modalOpen" 
+            x-transition:enter="transition ease-out duration-150 transform"
+            x-transition:enter-start="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95" 
+            x-transition:enter-end="opacity-100 translate-y-0 sm:scale-100"
+            x-transition:leave="transition ease-in duration-200 transform"
+            x-transition:leave-start="opacity-100 translate-y-0 sm:scale-100" 
+            x-transition:leave-end="opacity-0 translate-y-4 sm:translate-y-0 sm:scale-95"
+            class="relative inline-block w-full overflow-y-auto p-6 my-20 overflow-x-hidden text-left transition-all transform bg-white rounded-lg shadow-xl "
+            :class="modalType == 'delete' || modalType == 'medium' ? 'max-w-2xl' : modalType == 'small' ? 'max-w-2xl sm:max-w-md' : 'max-w-6xl'"
+            style="min-height: 12vh; max-height: 80vh"
+        >
+            <div x-show="!modalAlert" class="flex w-full -mt-4 ml-4 justify-end">
+                <button @click="modalOpen = false" class="bg-white text-gray-600 focus:outline-none hover:text-gray-700">
+                    <svg class="size-6" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
+    <path d="M6.28 5.22a.75.75 0 0 0-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 1 0 1.06 1.06L10 11.06l3.72 3.72a.75.75 0 1 0 1.06-1.06L11.06 10l3.72-3.72a.75.75 0 0 0-1.06-1.06L10 8.94 6.28 5.22Z" />
+</svg>
+                </button>
+            </div>
+
+            <div id="modalContent" x-ref="modalContent">
+            
+
+            <template x-if="modalAlert != false">
+                <div id="modalAlertContent">
+                    <div x-text="modalAlert.title" class="text-base font-semibold mb-4"></div>
+
+                    <div x-text="modalAlert.text" class="text-sm font-normal text-gray-600 mb-4"></div>
+
+                    <div  class="flex justify-end items-center gap-2">
+
+                        <button @click="modalOpen = false" type="button" class="rounded-md text-sm sm:leading-5 border border-white hover:border-gray-100 bg-white hover:bg-gray-100 text-gray-800 inline-flex align-middle items-center px-4 py-2 font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500">
+                            <span x-text="modalAlert.cancel ?? 'موافق'"></span>
+                        </button>
+
+                        <button x-cloak x-show="modalAlert.confirm" type="button" name="Submit" value="Submit" class="rounded-md text-sm sm:leading-5  border-gray-800 bg-gray-800 hover:bg-gray-900 text-white inline-flex align-middle items-center border border-gray-400 px-4 py-2 font-semibold shadow-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500">
+                            <span x-text="modalAlert.confirm">Submit</span>
+                        </button>
+                    </div>
+                </div>
+            </template>
+
+            </div>
+        </div>
+    </div>
+</div>
+
+            </body>
+</html>

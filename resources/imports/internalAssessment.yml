@@ -1,0 +1,65 @@
+details:
+    type: internalAssessment
+    name: Internal Assessments
+    table: tawasulInternalAssessmentEntry
+    modes: { update: true, insert: true, export: true }
+access:
+    module: Formal Assessment
+    action: Manage Internal Assessments
+primaryKey:
+    tawasulInternalAssessmentEntryID
+uniqueKeys:
+    - [ tawasulInternalAssessmentColumnID, tawasulPersonIDStudent ]
+table:
+    tawasulSchoolYearID: 
+        name: "School Year"
+        desc: "School year name, as set in School Admin. Must already exist."
+        args: { filter: schoolyear, required: true, custom: true, readonly: true }
+        relationship: { table: tawasulSchoolYear, key: tawasulSchoolYearID, field: name  }
+    tawasulCourseID: 
+        name: "Course"
+        desc: "Short Name"
+        args: { filter: string, required: true, custom: true, readonly: true }
+        relationship: { table: tawasulCourse, key: tawasulCourseID, field: [ nameShort, tawasulSchoolYearID ]  }
+    tawasulCourseClassID: 
+        name: "Class"
+        desc: "Short Name"
+        args: { filter: string, required: true, custom: true, readonly: true }
+        relationship: { table: tawasulCourseClass, key: tawasulCourseClassID, field: [ nameShort, tawasulCourseID ]  }
+    tawasulInternalAssessmentColumnID:
+        name: "Internal Assessment"
+        desc: "Assessment Column Name"
+        args: { filter: string, custom: true, required: true }
+        relationship: { table: tawasulInternalAssessmentColumn, key: tawasulInternalAssessmentColumnID, field: [name, tawasulCourseClassID]  }
+    tawasulPersonIDStudent: 
+        name: "Student"
+        desc: "Username or Email (if unique)"
+        args: { filter: string, required: true }
+        relationship: { table: tawasulPerson, key: tawasulPersonID, field: username|email }
+    attainmentValue: 
+        name: "Attainment Value"
+        desc: ""
+        args: { filter: string, custom: true }
+    attainmentDescriptor: 
+        name: "Attainment Descriptor"
+        desc: ""
+        args: { filter: string, linked: attainmentValue }
+        relationship: { table: tawasulScaleGrade, key: descriptor, join: tawasulInternalAssessmentColumn, on: [tawasulScaleIDAttainment, tawasulScaleID], field: [ value, tawasulInternalAssessmentColumnID ] }
+    effortValue: 
+        name: "Effort Value"
+        desc: ""
+        args: { filter: string, custom: true }
+    effortDescriptor: 
+        name: "Effort Descriptor"
+        desc: ""
+        args: { filter: string, linked: effortValue }
+        relationship: { table: tawasulScaleGrade, key: descriptor, join: tawasulInternalAssessmentColumn, on: [tawasulScaleIDEffort, tawasulScaleID], field: [ value, tawasulInternalAssessmentColumnID ] }
+    comment: 
+        name: "Comment"
+        desc: ""
+        args: { filter: string, custom: true }
+    tawasulPersonIDLastEdit: 
+        name: "Created By"
+        desc: "Username or Email (if unique)"
+        args: { filter: string, custom: true }
+        relationship: { table: tawasulPerson, key: tawasulPersonID, field: username|email }

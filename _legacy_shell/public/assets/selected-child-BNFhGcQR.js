@@ -1,0 +1,1 @@
+var e=`siy-selected-child-id`;function t(){try{let t=localStorage.getItem(e);if(!t)return null;let n=Number(t);return Number.isFinite(n)?n:null}catch{return null}}function n(t){try{localStorage.setItem(e,String(t))}catch{}}function r(e){return(e??[]).find(e=>e.role===`parent`)?.childStudentIds??[]}export{t as n,n as r,r as t};

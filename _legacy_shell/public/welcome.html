@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title> تسجيل الدخول — TawasulOS</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@500;600;700;800&family=Tajawal:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/tawasul-os/public/assets/tawasul-design.css">
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="min-h-screen bg-background text-foreground" style="font-family:'Tajawal','Cairo',sans-serif">
+    <section class="relative overflow-hidden bg-primary px-6 pb-12 pt-8 text-primary-foreground sm:px-10 sm:pb-16 sm:pt-10">
+        <div class="pointer-events-none absolute -left-24 -top-24 h-52 w-52 rounded-full bg-coral/80"></div>
+        <div class="pointer-events-none absolute -bottom-16 right-[12%] h-32 w-32 rounded-full bg-gold"></div>
+        
+        <div class="relative z-10 mx-auto max-w-3xl">
+            <div class="flex items-center gap-3">
+                <span class="flex h-14 w-14 items-center justify-center overflow-hidden rounded-2xl bg-card">
+                    <span class="text-2xl font-bold text-primary">T</span>
+                </span>
+                <div class="min-w-0 leading-tight">
+                    <div class="text-xl font-extrabold sm:text-2xl">TawasulOS</div>
+                    <div class="mt-1 truncate text-[10px] text-primary-foreground/65">نظام المدرسة</div>
+                </div>
+            </div>
+            
+            <h1 class="mt-10 max-w-xl text-4xl font-extrabold leading-tight sm:text-5xl">
+                مساحة واحدة هادئة لكل المدرسة.
+            </h1>
+            <p class="mt-4 max-w-xl text-base leading-8 text-primary-foreground/75 sm:text-lg">
+                الجدول، الحضور، الدرجات والإشعارات — ادخل بaccount المدرسة الذي تم تزويدك به.
+            </p>
+        </div>
+    </section>
+
+    <main class="mx-auto max-w-3xl px-6 py-9 sm:px-10 sm:py-12">
+        <div class="flex items-center justify-between gap-4">
+            <div>
+                <h2 class="text-3xl font-extrabold text-foreground sm:text-4xl">تسجيل الدخول</h2>
+                <p class="mt-2 text-sm leading-7 text-muted-foreground sm:text-base">
+                    استخدم اسم المستخدم كلمة المرور الخاصة بaccountك المدرسي.
+                </p>
+            </div>
+            <span class="flex h-12 w-12 shrink-0 items-center justify-center rounded-full border-2 border-border bg-card text-lg font-extrabold text-primary">
+                ع
+            </span>
+        </div>
+
+        <form class="mt-8 space-y-5" action="/tawasul-os/tawasul.php" method="POST">
+            <div id="errorBox" class="hidden rounded-lg bg-red-50 border border-red-200 px-4 py-3 text-sm text-red-700"></div>
+            <div class="space-y-2">
+                <label for="username" class="block text-sm font-bold text-foreground">
+                    اسم المستخدم أو البريد الإلكتروني
+                </label>
+                <div class="relative">
+                    <input
+                        id="username"
+                        name="username"
+                        type="text"
+                        required
+                        maxlength="255"
+                        placeholder="أدخل اسم المستخدم أو البريد الإلكتروني"
+                        class="h-14 bg-card pr-12 text-base border border-border rounded-lg w-full"
+                    >
+                </div>
+            </div>
+
+            <div class="space-y-2">
+                <label for="password" class="block text-sm font-bold text-foreground">
+                    كلمة المرور
+                </label>
+                <div class="relative">
+                    <input
+                        id="password"
+                        name="password"
+                        type="password"
+                        required
+                        minlength="6"
+                        maxlength="128"
+                        placeholder="أدخل كلمة المرور"
+                        class="h-14 bg-card px-12 text-base border border-border rounded-lg w-full"
+                    >
+                </div>
+            </div>
+
+            <div class="flex items-center justify-between gap-4 text-sm">
+                <label class="flex cursor-pointer items-center gap-2 font-medium text-foreground">
+                    <input type="checkbox" name="remember" class="h-4 w-4 accent-primary">
+                    تذكّرني
+                </label>
+                <span class="font-semibold text-muted-foreground"> نسيت كلمة المرور؟</span>
+            </div>
+
+            <button type="submit" class="h-14 w-full text-base font-bold bg-primary text-primary-foreground rounded-full hover:bg-primary/90">
+                تسجيل الدخول
+            </button>
+        </form>
+
+        <p class="mt-6 rounded-2xl bg-secondary px-4 py-4 text-center text-sm font-semibold leading-6 text-secondary-foreground">
+            استخدم بيانات حسابك الحالية في نظام المدرسة. يتم تفعيل الاتصال عند ربط الخادم.
+        </p>
+    </main>
+    <script>
+        // Show error if present in URL
+        const urlParams = new URLSearchParams(window.location.search);
+        if (urlParams.get('error') === 'invalid') {
+            const box = document.getElementById('errorBox');
+            box.textContent = 'اسم المستخدم أو كلمة المرور غير صحيحة. يرجى المحاولة مرة أخرى.';
+            box.classList.remove('hidden');
+        }
+    </script>
+</body>
+</html>

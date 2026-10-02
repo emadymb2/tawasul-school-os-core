@@ -1,0 +1,241 @@
+<?php
+/*
+TawasulOS, Flexible & Open School System
+Copyright (C) 2010, Ross Parker
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+use TawasulOS\Forms\Form;
+use TawasulOS\Services\Format;
+use TawasulOS\Forms\DatabaseFormFactory;
+use TawasulOS\Domain\Calendar\CalendarGateway;
+use TawasulOS\Domain\Calendar\CalendarEventGateway;
+use TawasulOS\Domain\Calendar\CalendarEventTypeGateway;
+use TawasulOS\Domain\Calendar\CalendarEventPersonGateway;
+use TawasulOS\Support\Facades\Access;
+
+if (isActionAccessible($guid, $connection2, '/modules/TawasulCalendar/calendar_event_edit.php') == false) {
+    // Access denied
+    $page->addError(__('You do not have access to this action.'));
+} else {
+    // Proceed!
+     $page->breadcrumbs
+        ->add(__('Manage Events'), 'calendar_event_manage.php')
+        ->add(__('Edit Event'));
+
+    $tawasulCalendarEventID = $_GET['tawasulCalendarEventID'] ?? '';   
+
+    if (empty($tawasulCalendarEventID) && isset($_GET['editID'])) {
+        $page->return->setEditLink($session->get('absoluteURL').'/index.php?q=/modules/TawasulCalendar/calendar_event_edit.php&tawasulCalendarEventID='.$_GET['editID']);
+    }
+
+    $page->return->addReturns([
+        'warning9' => __('Your request was completed successfully. Previous future absences tied to this event were removed due to the date/time change. Please set future absences again.'),
+    ]);
+    
+    $calendarEventGateway = $container->get(CalendarEventGateway::class);
+    $calendarEventPersonGateway = $container->get(CalendarEventPersonGateway::class);
+    $calendarGateway = $container->get(CalendarGateway::class);
+    $calendarEventTypeGateway = $container->get(CalendarEventTypeGateway::class);
+
+    // Get event details
+    $values = $calendarEventGateway->getByID($tawasulCalendarEventID);
+    $event = $calendarEventGateway->getEventDetailsByID($tawasulCalendarEventID, $session->get('tawasulPersonID'));
+    if (empty($values) || empty($event)) {
+        $page->addError(__('The specified record cannot be found.'));
+        return;
+    }
+
+    // Check for access to edit this event
+    if ($event['editor'] != 'Y' && !Access::allows('Calendar', 'calendar_event_edit', 'Manage Events_all')) {
+        $page->addError(__('The selected record does not exist, or you do not have access to it.'));
+        return;
+    }
+
+    // EDIT FORM
+    $form = Form::create('editEvent', $session->get('absoluteURL').'/modules/TawasulCalendar/calendar_event_editProcess.php');
+    $form->setFactory(DatabaseFormFactory::create($pdo));
+
+    $form->addHiddenValue('address', $session->get('address'));
+    $form->addHiddenValue('tawasulCalendarEventID', $tawasulCalendarEventID);
+
+    $form->addHeaderAction('view', __('View Event'))
+        ->setURL('/modules/TawasulCalendar/calendar_event_view.php')
+        ->addParam('tawasulCalendarEventID', $tawasulCalendarEventID)
+        ->displayLabel();
+
+    $form->addHeaderAction('participants', __('Edit Participants'))
+        ->setURL('/modules/TawasulCalendar/calendar_event_participants.php')
+        ->addParam('tawasulCalendarEventID', $tawasulCalendarEventID)
+        ->setIcon('users')
+        ->displayLabel();
+
+    $form->addHeaderAction('notify', __('Notify Staff'))
+        ->setURL('/modules/TawasulCalendar/calendar_event_notify.php')
+        ->addParam('tawasulCalendarEventID', $tawasulCalendarEventID)
+        ->setIcon('notify')
+        ->displayLabel();
+
+        $form->addSection('Basic Information', __('Basic Information'));
+
+    // Get Calendars of the current school year
+    $tawasulPersonIDEditor = Access::allows('Calendar', 'calendar_event_edit', 'Manage Events_all') ? null : $session->get('tawasulPersonID');
+    $calendars = $calendarGateway->selectEditableCalendarsByPerson($session->get('tawasulSchoolYearID'), $tawasulPersonIDEditor)->fetchKeyPair();
+    
+    if (!empty($calendars)) {
+        $row = $form->addRow();
+            $row->addLabel('tawasulCalendarID', __('Calendar'));
+            $row->addSelect('tawasulCalendarID')
+                ->fromArray($calendars)
+                ->placeholder()
+                ->required();
+    } else {
+        $row = $form->addRow();
+            $row->addLabel('calendarName', __('Calendar'));
+            $row->addTextField('calendarName')->readOnly()->setValue($event['calendarName']);
+            $form->addHiddenValue('tawasulCalendarID', $values['tawasulCalendarID']);
+    }
+
+    // Get all event types
+    $types = $calendarEventTypeGateway->selectAllEventTypes()->fetchKeyPair();
+    $row = $form->addRow();
+        $row->addLabel('tawasulCalendarEventTypeID', __('Event Type'));
+        $row->addSelect('tawasulCalendarEventTypeID')
+            ->fromArray($types)
+            ->placeholder()
+            ->required();
+
+
+    $row = $form->addRow();
+        $row->addLabel('name', __('Event Name'));
+        $row->addTextField('name')->required()->maxLength(120);
+
+    // Status can be changed to cancelled while editing
+    $statusList = [
+        'Confirmed' => __('Confirmed'),
+        'Tentative' => __('Tentative'),
+        'Cancelled' => __('Cancelled'),
+    ];
+
+    $row = $form->addRow();
+        $row->addLabel('status', __('Event Status'));
+        $row->addSelect('status')
+            ->fromArray($statusList)
+            ->required();
+
+    // Event Dates
+    $form->addSection('Event Details', __('Event Details'));
+
+    $date = $_GET['date'] ?? '';
+    $row = $form->addRow();
+        $row->addLabel('dateStart', __('Date'));
+
+        $row->addDate('dateStart')->chainedTo('dateEnd')->required()->setValue($date);
+        $row->addDate('dateEnd')->chainedFrom('dateStart')->setValue($date);
+
+        $row->addCheckbox('allDay')
+            ->description(__('All Day'))
+            ->setOuterClass('w-min')
+            ->inline()
+            ->setValue('Y')
+            ->checked('Y');
+
+    $form->toggleVisibilityByClass('timeOptions')->onCheckbox('allDay')->whenNot('Y');
+
+    $row = $form->addRow()->addClass('timeOptions');
+        $row->addLabel('time', __('Time'));
+        $row->addTime('timeStart')
+            ->required();
+        $row->addTime('timeEnd')
+            ->chainedTo('timeStart')
+            ->required();
+
+    // Description
+    $form->addSection('Description', __('Description'))->closed(empty($values['description']));
+
+    $form->addRow()->addEditor('description', $guid)->setRows(5);
+
+    
+    // Event Location
+    $form->addSection('Location', __('Location'))->closed(empty($values['tawasulSpaceID']) && empty($values['locationDetail']));
+
+    $row = $form->addRow();
+        $row->addLabel('locationType', __('Location Type'));
+        $row->addSelect('locationType')->fromArray(['Internal' => __('Internal'), 'External' => __('External')])->placeholder();
+
+    $form->toggleVisibilityByClass('internal')->onSelect('locationType')->when('Internal');
+
+    $row = $form->addRow()->addClass('internal');
+        $row->addLabel('location', __('Location'));
+        $row->addSelectSpace('tawasulSpaceID');
+
+    $form->toggleVisibilityByClass('external')->onSelect('locationType')->when('External');
+
+    $row = $form->addRow()->addClass('external');
+        $row->addLabel('locationDetail', __('Location Details'));
+        $row->addTextField('locationDetail');
+
+    $row = $form->addRow()->addClass('external');
+        $row->addLabel('locationURL', __('Location URL'));
+        $row->addUrl('locationURL')->maxLength(255);
+
+
+    // CURRENT STAFF TABLE
+
+    $staffList = $calendarEventPersonGateway->selectEventStaff($tawasulCalendarEventID)->toDataSet();
+
+    $form->addSection('Staff', __('Staff'))->closed(count($staffList) <= 1);
+
+    $staffTable = $form->addRow()->addDataTable('staffTable');
+    $staffTable->setDescription(Format::bold(__('Current Staff')));
+
+    $staffTable->addColumn('name', __('Name'))
+        ->format(Format::using('name', ['', 'preferredName', 'surname', 'Staff', false, true]));
+
+    $staffTable->addColumn('role', __('Role'))
+        ->format(function($staff) {
+            return __($staff['role']);
+        });
+
+    $staffTable->addActionColumn()
+                ->addParam('tawasulCalendarEventPersonID')
+                ->addParam('tawasulCalendarEventID', $tawasulCalendarEventID)
+                ->format(function ($staff, $actions) {
+                    $actions->addAction('delete', __('Delete'))
+                            ->setURL('/modules/TawasulCalendar/calendar_event_editStaff_delete.php');
+                });
+
+    $staffTable->withData($staffList);
+
+    $row = $form->addRow();
+        $row->addLabel('staff', __('New Staff'));
+        $row->addSelectUsers('staff', $session->get('tawasulSchoolYearID'), ['includeStaff' => true])->selectMultiple();
+
+    $row = $form->addRow();
+        $row->addLabel('role', 'Role');
+        $row->addSelect('role')
+            ->fromArray([
+                'Organiser' => __('Organiser'),
+                'Coach'     => __('Coach'),
+                'Assistant' => __('Assistant'),
+                'Other'     => __('Other'), 
+            ]);
+
+    $form->addSection('submit')->addSubmit();
+
+    $form->loadAllValuesFrom($values);
+
+    echo $form->getOutput();
+}

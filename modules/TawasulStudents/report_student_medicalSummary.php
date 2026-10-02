@@ -1,0 +1,165 @@
+<?php
+/*
+Gibbon: the flexible, open school platform
+Founded by Ross Parker at ICHK Secondary. Built by Ross Parker, Sandra Kuipers and the Gibbon community (https://gibbonedu.org/about/)
+Copyright © 2010, Gibbon Foundation
+Gibbon™, Gibbon Education Ltd. (Hong Kong)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+use TawasulOS\Domain\System\SettingGateway;
+use TawasulOS\View\View;
+use TawasulOS\Services\Format;
+use TawasulOS\Forms\Form;
+use TawasulOS\Forms\DatabaseFormFactory;
+use TawasulOS\Tables\Prefab\ReportTable;
+use TawasulOS\Domain\Students\MedicalGateway;
+use TawasulOS\Domain\Students\StudentReportGateway;
+use TawasulOS\Domain\System\CustomFieldGateway;
+use TawasulOS\Forms\CustomFieldHandler;
+
+//Module includes
+require_once __DIR__ . '/moduleFunctions.php';
+
+if (isActionAccessible($guid, $connection2, '/modules/TawasulStudents/report_student_medicalSummary.php') == false) {
+    // Access denied
+    $page->addError(__('You do not have access to this action.'));
+} else {
+    //Proceed!
+    $viewMode = $_REQUEST['format'] ?? '';
+    $excludeNoConditions = $_REQUEST['excludeNoConditions'] ?? 'N';
+    $choices = $_POST['tawasulPersonID'] ?? [];
+    //If $choices is blank, check to see if session is being used to inject tawasulPersonID list
+    if (count($choices) == 0 && $session->has('report_student_medicalSummary.php_choices')) {
+        $choices = $session->get('report_student_medicalSummary.php_choices');
+    }
+    $tawasulSchoolYearID = $session->get('tawasulSchoolYearID');
+
+    if (isset($_GET['tawasulPersonIDList'])) {
+        $choices = explode(',', $_GET['tawasulPersonIDList']);
+    } else {
+        $_GET['tawasulPersonIDList'] = implode(',', $choices);
+    }
+
+    if (empty($viewMode)) {
+        $page->breadcrumbs->add(__('Student Medical Data Summary'));
+
+        echo '<p>';
+        echo __('This report prints a summary of medical data for the selected students.');
+        echo '</p>';
+
+        $choices = isset($_POST['tawasulPersonID'])? $_POST['tawasulPersonID'] : array();
+
+        $form = Form::create('action', $session->get('absoluteURL')."/index.php?q=/modules/TawasulStudents/report_student_medicalSummary.php");
+        $form->setTitle(__('Choose Students'));
+        $form->setFactory(DatabaseFormFactory::create($pdo));
+        $form->setClass('noIntBorder w-full');
+
+        $row = $form->addRow();
+            $row->addLabel('tawasulPersonID', __('Students'));
+            $row->addSelectStudent('tawasulPersonID', $session->get('tawasulSchoolYearID'), array("allStudents" => false, "byName" => true, "byForm" => true))
+                ->isRequired()
+                ->selectMultiple()
+                ->selected($choices);
+
+        $row = $form->addRow();
+            $row->addLabel('excludeNoConditions', __('Exclude Students with No Medical Conditions?'));
+            $row->addCheckbox('excludeNoConditions')->setValue('Y')->checked($excludeNoConditions);
+
+        $row = $form->addRow();
+            $row->addFooter();
+            $row->addSearchSubmit($session);
+
+        echo $form->getOutput();
+    }
+
+
+    if (empty($choices)) {
+        return;
+    }
+
+    $cutoffDate = $container->get(SettingGateway::class)->getSettingByScope('Data Updater', 'cutoffDate');
+    if (empty($cutoffDate)) $cutoffDate = Format::dateFromTimestamp(time() - (604800 * 26));
+
+    $reportGateway = $container->get(StudentReportGateway::class);
+    $medicalGateway = $container->get(MedicalGateway::class);
+
+    // CRITERIA
+    $criteria = $reportGateway->newQueryCriteria(true)
+        ->sortBy(['tawasulPerson.surname', 'tawasulPerson.preferredName'])
+        ->pageSize(!empty($viewMode) || $excludeNoConditions == 'Y' ? 0 : 50)
+        ->fromPOST();
+
+    $students = $reportGateway->queryStudentDetails($criteria, $tawasulSchoolYearID, $choices);
+
+    // Join a set of medical conditions per student
+    $medicalIDs = array_filter($students->getColumn('tawasulPersonMedicalID'));
+    $medicalConditions = !empty($medicalIDs) ? $medicalGateway->selectMedicalConditionsByID($medicalIDs)->fetchGrouped() : [];
+    $students->joinColumn('tawasulPersonMedicalID', 'medicalConditions', $medicalConditions);
+
+    // Exclude students who have no medical conditions or no long-term medication
+    if ($excludeNoConditions == 'Y') {
+        $students->filter(function ($student) {
+            return !empty($student['medicalConditions']) || $student['longTermMedication'] === 'Y';
+        });
+        $students->setResultCount($students->count());
+    }
+
+    // DATA TABLE
+    $table = ReportTable::createPaginated('studentEmergencySummary', $criteria)->setViewMode($viewMode, $session);
+    $table->setTitle(__('Student Medical Data Summary'));
+
+    $table->addMetaData('post', ['tawasulPersonID' => $choices, 'excludeNoConditions' => $excludeNoConditions]);
+
+    $table->addColumn('formGroup', __('Form Group'))
+        ->sortable(['tawasulFormGroup.nameShort'])
+        ->width('8%');
+
+    $table->addColumn('student', __('Student'))
+        ->description(__('Last Update'))
+        ->sortable(['tawasulPerson.surname', 'tawasulPerson.preferredName'])
+        ->format(function ($student) use ($cutoffDate) {
+            $output = Format::nameLinked($student['tawasulPersonID'], '', $student['preferredName'], $student['surname'], 'Student', true, true, ['subpage' => 'Medical']).'<br/><br/>';
+
+            $output .= ($student['lastMedicalUpdate'] < $cutoffDate) ? '<span style="color: #ff0000; font-weight: bold"><i>' : '<span><i>';
+            $output .= !empty($student['lastMedicalUpdate']) ? Format::date($student['lastMedicalUpdate']) : __('N/A');
+            $output .= '</i></span>';
+
+            return $output;
+        });
+
+    $view = new View($container->get('twig'));
+    $customFieldGateway = $container->get(CustomFieldGateway::class);
+    $customFieldHandler = $container->get(CustomFieldHandler::class);
+
+    $table->addColumn('medicalForm', __('Medical Form?'))
+        ->width('26%')
+        ->sortable('tawasulPersonMedicalID')
+        ->format(function ($student) use ($view, $customFieldGateway, $customFieldHandler) {
+            $student['customFields'] = $customFieldGateway->selectCustomFields('Medical Form')->fetchAll();
+            $student['fields'] = !empty($student['fields']) ? json_decode($student['fields'], true) : [];
+            $student['fields'] = $customFieldHandler->formatFieldData($student['customFields'], $student['fields']);
+            return $view->fetchFromTemplate('formats/medicalForm.twig.html', $student);
+        });
+
+    $table->addColumn('conditions', __('Medical Conditions'))
+        ->width('50%')
+        ->notSortable()
+        ->format(function ($student) use ($view) {
+            return $view->fetchFromTemplate('formats/medicalConditions.twig.html', $student);
+        });
+
+    echo $table->render($students);
+}

@@ -1,0 +1,112 @@
+<?php
+/*
+TawasulOS, Flexible & Open School System
+Copyright (C) 2010, Ross Parker
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+use TawasulOS\Data\Validator;
+use TawasulOS\Services\Format;
+use TawasulOS\Domain\Activities\ActivityCategoryGateway;
+use TawasulOS\Contracts\Filesystem\FileHandler;
+
+require_once __DIR__ . '/../../tawasul.php';
+
+$_POST = $container->get(Validator::class)->sanitize($_POST, ['description' => 'HTML']);
+
+$URL = $session->get('absoluteURL').'/index.php?q=/modules/TawasulActivities/activities_categories_add.php';
+
+$tawasulSchoolYearID = $_REQUEST['tawasulSchoolYearID'] ?? $session->get('tawasulSchoolYearID');
+
+if (isActionAccessible($guid, $connection2, '/modules/TawasulActivities/activities_categories_add.php') == false) {
+    $URL .= '&return=error0';
+    header("Location: {$URL}");
+    exit;
+} else {
+    // Proceed!
+    $categoryGateway = $container->get(ActivityCategoryGateway::class);
+
+    $data = [
+        'tawasulSchoolYearID'    => $tawasulSchoolYearID,
+        'name'                  => $_POST['name'] ?? '',
+        'nameShort'             => $_POST['nameShort'] ?? '',
+        'signUpChoices'         => $_POST['signUpChoices'] ?? '3',
+        'description'           => $_POST['description'] ?? '',
+        'backgroundImage'       => $_POST['backgroundImage'] ?? '',
+        'active'                => $_POST['active'] ?? 'N',
+        'viewableDate'          => !empty($_POST['viewableDate'])
+                                ? Format::dateConvert($_POST['viewableDate']).' '.($_POST['viewableTime'] ?? '00:00')
+                                : null,
+        'accessOpenDate'        => !empty($_POST['accessOpenDate'])
+                                ? Format::dateConvert($_POST['accessOpenDate']).' '.($_POST['accessOpenTime'] ?? '00:00')
+                                : null,
+        'accessCloseDate'        => !empty($_POST['accessCloseDate'])
+                                ? Format::dateConvert($_POST['accessCloseDate']).' '.($_POST['accessCloseTime'] ?? '00:00')
+                                : null,
+        'accessEnrolmentDate'   => !empty($_POST['accessEnrolmentDate'])
+                                ? Format::dateConvert($_POST['accessEnrolmentDate']).' '.($_POST['accessEnrolmentTime'] ?? '00:00')
+                                : null,
+    ];
+
+    // Validate the required values are present
+    if (empty($data['name']) || empty($data['nameShort']) || empty($data['active'])) {
+        $URL .= '&return=error1';
+        header("Location: {$URL}");
+        exit;
+    }
+
+    // Validate that this record is unique
+    if (!$categoryGateway->unique($data, ['name', 'tawasulSchoolYearID'])) {
+        $URL .= '&return=error7';
+        header("Location: {$URL}");
+        exit;
+    }
+
+    // Move attached file, if there is one
+    $fileMetaData = null;
+    if (!empty($_FILES['backgroundImageFile']['tmp_name'])) {
+        $fileUploader = new TawasulOS\FileUploader($pdo, $session);
+        $fileUploader->getFileExtensions('Graphics/Design');
+
+        $file = $_FILES['backgroundImageFile'] ?? null;
+
+        // Upload the file, return the /uploads relative path
+        $data['backgroundImage'] = $fileUploader->uploadFromPost($file, $data['name']);
+        
+        if (empty($data['backgroundImage'])) {
+            $partialFail = true;
+        } else {
+            $fileMetaData = $fileUploader->getFileMetaData($data['backgroundImage']);
+        }
+    }
+
+    // Create the record
+    $tawasulActivityCategoryID = $categoryGateway->insert($data);
+
+    // Record file tracking
+    if (!empty($fileMetaData) && !empty($tawasulActivityCategoryID)) {
+        $tawasulFileID = $container->get(FileHandler::class)->recordFileUpload($fileMetaData, 'tawasulActivityCategory', $tawasulActivityCategoryID, 'backgroundImage');
+        
+        if (empty($tawasulFileID)) {
+            $partialFail = true;
+        }
+    }
+
+    $URL .= !$tawasulActivityCategoryID
+        ? "&return=error2"
+        : "&return=success0&editID=$tawasulActivityCategoryID";
+
+    header("Location: {$URL}");
+}

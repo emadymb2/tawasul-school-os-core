@@ -1,0 +1,53 @@
+details:
+    type: plannerOutcomes
+    name: Outcomes
+    table: tawasulOutcome
+    modes: { update: true, insert: true, export: true }
+access:
+    module: Planner
+    action: Manage Outcomes_viewEditAll
+primaryKey:
+    tawasulOutcomeID
+uniqueKeys:
+    - [ name, tawasulDepartmentID ]
+    - [ nameShort, tawasulDepartmentID ]
+table:
+    scope: 
+        name: "Scope"
+        desc: ""
+        args: { filter: string, required: true, custom: true }
+    tawasulDepartmentID: 
+        name: "Learning Area"
+        desc: "Short Name"
+        args: { filter: string, custom: true }
+        relationship: { table: tawasulDepartment, key: tawasulDepartmentID, field: nameShort  }
+    name: 
+        name: "Name"
+        desc: ""
+        args: { filter: string, required: true }
+    nameShort: 
+        name: "Short Name"
+        desc: ""
+        args: { filter: string, required: true }
+    active: 
+        name: "Active"
+        desc: ""
+        args: { filter: yesno, required: true, custom: true }
+    category: 
+        name: "Category"
+        desc: ""
+        args: { filter: string, custom: true }
+    description: 
+        name: "Description"
+        desc: ""
+        args: { filter: html }
+    tawasulYearGroupIDList: 
+        name: "Year Groups"
+        desc: "Relevant student year groups"
+        args: { filter: csv, custom: true }
+        relationship: { table: tawasulYearGroup, key: tawasulYearGroupID, field: nameShort }
+    tawasulPersonIDCreator: 
+        name: "Created By"
+        desc: "Username or Email (if unique)"
+        args: { filter: string, custom: true }
+        relationship: { table: tawasulPerson, key: tawasulPersonID, field: username|email }

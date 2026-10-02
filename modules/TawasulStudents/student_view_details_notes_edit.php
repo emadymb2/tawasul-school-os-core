@@ -1,0 +1,134 @@
+<?php
+/*
+Gibbon: the flexible, open school platform
+Founded by Ross Parker at ICHK Secondary. Built by Ross Parker, Sandra Kuipers and the Gibbon community (https://gibbonedu.org/about/)
+Copyright © 2010, Gibbon Foundation
+Gibbon™, Gibbon Education Ltd. (Hong Kong)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+use TawasulOS\Domain\System\SettingGateway;
+use TawasulOS\Forms\Form;
+use TawasulOS\Services\Format;
+
+if (isActionAccessible($guid, $connection2, '/modules/TawasulStudents/student_view_details_notes_edit.php') == false) {
+    // Access denied
+    $page->addError(__('You do not have access to this action.'));
+} else {
+    $highestAction = getHighestGroupedAction($guid, $_GET['q'], $connection2);
+    if ($highestAction == false) {
+        $page->addError(__('The highest grouped action cannot be determined.'));
+        return;
+    } else {
+        $allStudents = $_GET['allStudents'] ?? '';
+        $search = $_GET['search'] ?? '';
+        $sort = $_GET['sort'] ?? '';
+        $category = $_GET['category'] ?? '';
+
+        $enableStudentNotes = $container->get(SettingGateway::class)->getSettingByScope('Students', 'enableStudentNotes');
+        if ($enableStudentNotes != 'Y') {
+            $page->addError(__('You do not have access to this action.'));
+        } else {
+            $tawasulPersonID = $_GET['tawasulPersonID'] ?? '';
+            $subpage = $_GET['subpage'] ?? '';
+            if ($tawasulPersonID == '' or $subpage == '') {
+                $page->addError(__('You have not specified one or more required parameters.'));
+            } else {
+                
+                    $data = array('tawasulPersonID' => $tawasulPersonID);
+                    $sql = 'SELECT * FROM tawasulPerson WHERE tawasulPerson.tawasulPersonID=:tawasulPersonID';
+                    $result = $connection2->prepare($sql);
+                    $result->execute($data);
+                if ($result->rowCount() != 1) {
+                    $page->addError(__('The selected record does not exist, or you do not have access to it.'));
+                } else {
+                    $student = $result->fetch();
+
+                    //Proceed!
+                    $page->breadcrumbs
+                        ->add(__('View Student Profiles'), 'student_view.php')
+                        ->add(Format::name('', $student['preferredName'], $student['surname'], 'Student'), 'student_view_details.php', ['tawasulPersonID' => $tawasulPersonID, 'subpage' => $subpage, 'allStudents' => $allStudents])
+                        ->add(__('Edit Student Note'));
+
+                    //Check if tawasulStudentNoteID specified
+                    $tawasulStudentNoteID = $_GET['tawasulStudentNoteID'] ?? '';
+                    if ($tawasulStudentNoteID == '') {
+                        $page->addError(__('The specified record cannot be found.'));
+                    } else {
+                        try {
+                            if ($highestAction == "View Student Profile_fullEditAllNotes") {
+                                $data = array('tawasulStudentNoteID' => $tawasulStudentNoteID);
+                                $sql = 'SELECT * FROM tawasulStudentNote WHERE tawasulStudentNoteID=:tawasulStudentNoteID';
+                            }
+                            else {
+                                $data = array('tawasulStudentNoteID' => $tawasulStudentNoteID, 'tawasulPersonIDCreator' => $session->get('tawasulPersonID'));
+                                $sql = 'SELECT * FROM tawasulStudentNote WHERE tawasulStudentNoteID=:tawasulStudentNoteID AND tawasulPersonIDCreator=:tawasulPersonIDCreator';
+                            }
+                            $result = $connection2->prepare($sql);
+                            $result->execute($data);
+                        } catch (PDOException $e) {
+                        }
+
+                        if ($result->rowCount() != 1) {
+                            $page->addError(__('The selected record does not exist, or you do not have access to it.'));
+                        } else {
+                            //Let's go!
+                            $values = $result->fetch();
+
+                            $form = Form::create('notes', $session->get('absoluteURL').'/modules/'.$session->get('module')."/student_view_details_notes_editProcess.php?tawasulPersonID=$tawasulPersonID&search=".$search."&subpage=$subpage&tawasulStudentNoteID=$tawasulStudentNoteID&category=".$category."&allStudents=$allStudents");
+
+                            $form->addHiddenValue('address', $session->get('address'));
+                            
+                            if ($search != '') {
+                                $params = [
+                                    "search" => $search,
+                                    "tawasulPersonID" => $tawasulPersonID,
+                                    "subpage" => $subpage,
+                                    "category" => $category,
+                                    "allStudents" => $allStudents,
+                                ];
+                                $form->addHeaderAction('back', __('Back'))
+                                    ->setURL('/modules/TawasulStudents/student_view_details.php')
+                                    ->addParams($params);
+                            }
+
+                            $row = $form->addRow();
+                                $row->addLabel('title', __('Title'));
+                                $row->addTextField('title')->required()->maxLength(100);
+
+                            $sql = "SELECT tawasulStudentNoteCategoryID as value, name FROM tawasulStudentNoteCategory WHERE active='Y' ORDER BY name";
+                            $row = $form->addRow();
+                                $row->addLabel('tawasulStudentNoteCategoryID', __('Category'));
+                                $row->addSelect('tawasulStudentNoteCategoryID')->fromQuery($pdo, $sql)->required()->placeholder();
+
+                            $row = $form->addRow();
+                                $column = $row->addColumn();
+                                $column->addLabel('note', __('Note'));
+                                $column->addEditor('note', $guid)->required()->setRows(25)->showMedia();
+
+                            $row = $form->addRow();
+                                $row->addFooter();
+                                $row->addSubmit();
+
+                            $form->loadAllValuesFrom($values);
+
+                            echo $form->getOutput();
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

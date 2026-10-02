@@ -1,0 +1,404 @@
+<?php
+/*
+Gibbon: the flexible, open school platform
+Founded by Ross Parker at ICHK Secondary. Built by Ross Parker, Sandra Kuipers and the Gibbon community (https://gibbonedu.org/about/)
+Copyright © 2010, Gibbon Foundation
+Gibbon™, Gibbon Education Ltd. (Hong Kong)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+use TawasulOS\Forms\Form;
+use TawasulOS\Domain\DataSet;
+use TawasulOS\Domain\FormalAssessment\ExternalAssessmentFieldGateway;
+use TawasulOS\Services\Format;
+use TawasulOS\Tables\DataTable;
+use TawasulOS\Domain\User\UserGateway;
+use TawasulOS\Domain\School\ExternalAssessmentGateway;
+use TawasulOS\Domain\FormalAssessment\ExternalAssessmentStudentEntryGateway;
+use TawasulOS\Domain\FormalAssessment\ExternalAssessmentStudentGateway;
+
+if (isActionAccessible($guid, $connection2, '/modules/TawasulFormalAssessment/externalAssessment_manage_details_add.php') == false) {
+    // Access denied
+    $page->addError(__('You do not have access to this action.'));
+} else {
+    //Proceed!
+    $tawasulPersonID = $_GET['tawasulPersonID'] ?? '';
+    $search = $_GET['search'] ?? '';
+    $allStudents = $_GET['allStudents'] ?? '';
+
+    $page->breadcrumbs
+        ->add(__('View All Assessments'), 'externalAssessment.php')
+        ->add(__('Student Details'), 'externalAssessment_details.php', ['tawasulPersonID' => $tawasulPersonID])
+        ->add(__('Add Assessment'));
+
+    $editLink = '';
+    if (isset($_GET['editID'])) {
+        $editLink = $session->get('absoluteURL').'/index.php?q=/modules/TawasulFormalAssessment/externalAssessment_manage_details_edit.php&tawasulExternalAssessmentStudentID='.$_GET['editID'].'&search='.$_GET['search'].'&allStudents='.$_GET['allStudents'].'&tawasulPersonID='.$_GET['tawasulPersonID'].'&tawasulExternalAssessmentID='.$_GET['tawasulExternalAssessmentID'];
+    }
+    $page->return->setEditLink($editLink);
+
+    if ($tawasulPersonID == '') {
+        $page->addError(__('You have not specified one or more required parameters.'));
+    } else {
+        $result = $container->get(UserGateway::class)->getUserDetails($tawasulPersonID, $session->get('tawasulSchoolYearID'));
+
+        if (empty($result)) {
+            echo $page->getBlankSlate();
+        } else {
+            if ($search != '') {
+                $params = [
+                    "tawasulPersonID" => $tawasulPersonID,
+                    "search" => $search,
+                    "allStudents" => $allStudents
+                ];
+                $page->navigator->addHeaderAction('back', __('Back'))
+                    ->setURL('/modules/TawasulFormalAssessment/externalAssessment_details.php')
+                    ->addParams($params);
+            }
+            $row = $result;
+
+            // DISPLAY STUDENT DATA
+            $table = DataTable::createDetails('personal');
+            $table->addColumn('name', __('Name'))->format(Format::using('name', ['', 'preferredName', 'surname', 'Student', 'true']));
+                        $table->addColumn('yearGroup', __('Year Group'));
+                        $table->addColumn('formGroup', __('Form Group'));
+
+            echo $table->render([$row]);
+
+            $step = isset($_GET['step'])? $_GET['step'] : null;
+            if ($step != 1 and $step != 2) {
+                $step = 1;
+            }
+
+            // Step 1
+            if ($step == 1) {
+                $form = Form::create('addAssessment', $session->get('absoluteURL').'/index.php?q=/modules/'.$session->get('module').'/externalAssessment_manage_details_add.php', 'get');
+
+                $form->addHiddenValue('q', $_GET['q']);
+                $form->addHiddenValue('tawasulPersonID', $tawasulPersonID);
+                $form->addHiddenValue('step', 2);
+                $form->addHiddenValue('search', $search);
+                $form->addHiddenValue('allStudents', $allStudents);
+
+                $form->addRow()->addHeading('Assessment Type', __('Assessment Type'));
+
+                $result = $container->get(ExternalAssessmentGateway::class)->selectActiveExternalAssessments();
+
+                $row = $form->addRow();
+                    $row->addLabel('tawasulExternalAssessmentID', __('Choose Assessment'));
+                    $row->addSelect('tawasulExternalAssessmentID')->fromResults($result)->required()->placeholder();
+
+                $form->toggleVisibilityByClass('copyToGCSE')->onSelect('tawasulExternalAssessmentID')->when('0002');
+                $row = $form->addRow()->addClass('copyToGCSE');
+                    $row->addLabel('copyToGCSECheck', __('Copy Target Grades?'))->description(__('These will come from the student\'s last CAT test.'));
+                    $row->addCheckbox('copyToGCSECheck')->setValue('Y');
+
+                $form->toggleVisibilityByClass('copyToIB')->onSelect('tawasulExternalAssessmentID')->when('0003');
+                $row = $form->addRow()->addClass('copyToIB');
+                    $row->addLabel('copyToIBCheck', __('Create Target Grades?'))->description(__('These will be calculated from the student\'s GCSE grades.'));
+                    $row->addSelect('copyToIBCheck')->fromArray(array('Target' => __('From GCSE Target Grades'), 'Final' => __('GCSE Final Grades')))->placeholder();
+
+                $row = $form->addRow();
+                    $row->addFooter();
+                    $row->addSubmit(__('Go'));
+
+                echo $form->getOutput();
+
+            } else {
+                $tawasulExternalAssessmentID = $_GET['tawasulExternalAssessmentID'] ?? '';
+                $copyToGCSECheck = $_GET['copyToGCSECheck'] ?? null;
+                $copyToIBCheck = $_GET['copyToIBCheck'] ?? null;
+
+                $resultSelect = $container->get(ExternalAssessmentGateway::class)->selectBy(['tawasulExternalAssessmentID' => $tawasulExternalAssessmentID, 'active' => 'Y']);
+
+                if ($resultSelect->rowCount() != 1) {
+                    $page->addError(__('The selected record does not exist, or you do not have access to it.'));
+                } else {
+                    $rowSelect = $resultSelect->fetch();
+
+                    //Attempt to get CATs grades to copy to GCSE target
+                    if ($copyToGCSECheck == 'Y') {
+                        $grades = array();
+
+                        $resultCopy = $container->get(ExternalAssessmentGateway::class)->selectCATGradesByPersonID( $tawasulPersonID);
+                        
+                        if ($resultCopy->rowCount() > 0) {
+                            $rowCopy = $resultCopy->fetch();
+
+                                $resultCopy2 = $container->get(ExternalAssessmentStudentEntryGateway::class)->selectGCSEGradesByStudentID($rowCopy['tawasulExternalAssessmentStudentID']);
+
+                            while ($rowCopy2 = $resultCopy2->fetch()) {
+                                $grades[$rowCopy2['name']][0] = $rowCopy2['tawasulScaleGradeID'];
+                            }
+                        }
+                    }
+                    //Attempt to get GCSE grades to copy to IB target
+                    $regression = array();
+                    if ($copyToIBCheck == 'Target' or $copyToIBCheck == 'Final') {
+                        $grades = array();
+                        $count = 0;
+                        $countWeighted = 0;
+                        $total = 0;
+                        try {
+
+                            $resultCopy = $container->get(ExternalAssessmentStudentGateway::class)->selectGCSEGradesByPersonID($tawasulPersonID);
+
+                        } catch (PDOException $e) {
+                        }
+
+                        if ($resultCopy->rowCount() > 0) {
+                            $rowCopy = $resultCopy->fetch();
+                            try {
+                                if ($copyToIBCheck == 'Target') {
+                                    $resultCopy2 = $container->get(ExternalAssessmentStudentEntryGateway::class)->selectTargetGradesByExternalAssessmentStudentID($rowCopy['tawasulExternalAssessmentStudentID']);
+                                } elseif ($copyToIBCheck == 'Final') {
+                                    $resultCopy2 = $container->get(ExternalAssessmentStudentEntryGateway::class)->selectFinalGradesByExternalAssessmentStudentID($rowCopy['tawasulExternalAssessmentStudentID']);
+                                }
+                            } catch (PDOException $e) {
+                            }
+                            while ($rowCopy2 = $resultCopy2->fetch()) {
+                                //Conert grade to numeric value
+                                $grades[$count][0] = $rowCopy2['name'];
+                                if ($rowCopy2['value'] == 'A*') {
+                                    $grades[$count][1] = 7;
+                                } elseif ($rowCopy2['value'] == 'A') {
+                                    $grades[$count][1] = 6;
+                                } elseif ($rowCopy2['value'] == 'A/B' or $rowCopy2['value'] == 'B') {
+                                    $grades[$count][1] = 5;
+                                } elseif ($rowCopy2['value'] == 'B/C' or $rowCopy2['value'] == 'C') {
+                                    $grades[$count][1] = 4;
+                                } elseif ($rowCopy2['value'] == 'C/D' or $rowCopy2['value'] == 'D') {
+                                    $grades[$count][1] = 3;
+                                } elseif ($rowCopy2['value'] == 'D/E' or $rowCopy2['value'] == 'E') {
+                                    $grades[$count][1] = 2;
+                                } elseif ($rowCopy2['value'] == 'F') {
+                                    $grades[$count][1] = 1;
+                                } else {
+                                    $grades[$count][1] = 0;
+                                }
+
+                                ++$countWeighted;
+                                $total += $grades[$count][1];
+                                if (isset($grades[$count][2])) {
+                                    if ($grades[$count][2] == 'Science - Double Award') {
+                                        ++$countWeighted;
+                                        $total += $grades[$count][1];
+                                    }
+                                }
+                                ++$count;
+                            }
+
+                            //Calculate GCSE numeric mean
+                            if ($countWeighted != 0) {
+                                $mean = $total / $countWeighted;
+                            } else {
+                                $mean = 0;
+                            }
+
+                            //Apply regression
+                            $regression[1][1] = 'Biology';
+                            $regression[1][2] = 1.165650007;
+                            $regression[1][3] = -2.25440921;
+                            $regression[1][4] = round(($mean * $regression[1][2]) + $regression[1][3]);
+                            $regression[2][1] = 'Business Studies';
+                            $regression[2][2] = 1.130455413;
+                            $regression[2][3] = -1.519358653;
+                            $regression[2][4] = round(($mean * $regression[2][2]) + $regression[2][3]);
+                            $regression[3][1] = 'Chemistry';
+                            $regression[3][2] = 1.304881104;
+                            $regression[3][3] = -3.490021815;
+                            $regression[3][4] = round(($mean * $regression[3][2]) + $regression[3][3]);
+                            $regression[4][1] = 'Design Technology';
+                            $regression[4][2] = 1.137380235;
+                            $regression[4][3] = -2.122401828;
+                            $regression[4][4] = round(($mean * $regression[4][2]) + $regression[4][3]);
+                            $regression[5][1] = 'Economics';
+                            $regression[5][2] = 1.143439044;
+                            $regression[5][3] = -1.812296114;
+                            $regression[5][4] = round(($mean * $regression[5][2]) + $regression[5][3]);
+                            $regression[6][1] = 'Environmental Systems and Society';
+                            $regression[6][2] = 1.248948252;
+                            $regression[6][3] = -2.747483754;
+                            $regression[6][4] = round(($mean * $regression[6][2]) + $regression[6][3]);
+                            $regression[7][1] = 'English';
+                            $regression[7][2] = 0.927976158;
+                            $regression[7][3] = -0.94284584;
+                            $regression[7][4] = round(($mean * $regression[7][2]) + $regression[7][3]);
+                            $regression[8][1] = 'Film Studies';
+                            $regression[8][2] = 1.182838166;
+                            $regression[8][3] = -2.360542888;
+                            $regression[8][4] = round(($mean * $regression[8][2]) + $regression[8][3]);
+                            $regression[9][1] = 'Food Technology';
+                            $regression[9][2] = 1.152883638;
+                            $regression[9][3] = -2.260685644;
+                            $regression[9][4] = round(($mean * $regression[9][2]) + $regression[9][3]);
+                            $regression[10][1] = 'French';
+                            $regression[10][2] = 1.157342439;
+                            $regression[10][3] = -2.203111522;
+                            $regression[10][4] = round(($mean * $regression[10][2]) + $regression[10][3]);
+                            $regression[11][1] = 'Geography';
+                            $regression[11][2] = 1.202926215;
+                            $regression[11][3] = -2.385292067;
+                            $regression[11][4] = round(($mean * $regression[11][2]) + $regression[11][3]);
+                            $regression[12][1] = 'German';
+                            $regression[12][2] = 1.137380235;
+                            $regression[12][3] = -2.122401828;
+                            $regression[12][4] = round(($mean * $regression[12][2]) + $regression[12][3]);
+                            $regression[13][1] = 'History';
+                            $regression[13][2] = 1.204129207;
+                            $regression[13][3] = -2.364351524;
+                            $regression[13][4] = round(($mean * $regression[13][2]) + $regression[13][3]);
+                            $regression[14][1] = 'Italian';
+                            $regression[14][2] = 1.128043332;
+                            $regression[14][3] = -1.851982229;
+                            $regression[14][4] = round(($mean * $regression[14][2]) + $regression[14][3]);
+                            $regression[15][1] = 'Maths Studies';
+                            $regression[15][2] = 1.048269401;
+                            $regression[15][3] = -0.990598742;
+                            $regression[15][4] = round(($mean * $regression[15][2]) + $regression[15][3]);
+                            $regression[16][1] = 'Mathematics HL';
+                            $regression[16][2] = 1.395775638;
+                            $regression[16][3] = -4.717945299;
+                            $regression[16][4] = round(($mean * $regression[16][2]) + $regression[16][3]);
+                            $regression[17][1] = 'Music';
+                            $regression[17][2] = 1.124046791;
+                            $regression[17][3] = -1.820212137;
+                            $regression[17][4] = round(($mean * $regression[17][2]) + $regression[17][3]);
+                            $regression[18][1] = 'Philosophy';
+                            $regression[18][2] = 1.201966539;
+                            $regression[18][3] = -2.372274051;
+                            $regression[18][4] = round(($mean * $regression[18][2]) + $regression[18][3]);
+                            $regression[19][1] = 'Physics';
+                            $regression[19][2] = 1.343381065;
+                            $regression[19][3] = -3.749028496;
+                            $regression[19][4] = round(($mean * $regression[19][2]) + $regression[19][3]);
+                            $regression[20][1] = 'Psychology';
+                            $regression[20][2] = 1.111003966;
+                            $regression[20][3] = -1.810597105;
+                            $regression[20][4] = round(($mean * $regression[20][2]) + $regression[20][3]);
+                            $regression[21][1] = 'Spanish';
+                            $regression[21][2] = 1.164894191;
+                            $regression[21][3] = -2.334848569;
+                            $regression[21][4] = round(($mean * $regression[21][2]) + $regression[21][3]);
+                            $regression[22][1] = 'Theatre Arts';
+                            $regression[22][2] = 1.102638258;
+                            $regression[22][3] = -1.81567801;
+                            $regression[22][4] = round(($mean * $regression[22][2]) + $regression[22][3]);
+                            $regression[23][1] = 'Visual Arts';
+                            $regression[23][2] = 0.981346183;
+                            $regression[23][3] = -0.747573107;
+                            $regression[23][4] = round(($mean * $regression[23][2]) + $regression[23][3]);
+                            $regression[24][1] = 'Mathematics SL';
+                            $regression[24][2] = 1.248787179;
+                            $regression[24][3] = -3.349326039;
+                            $regression[24][4] = round(($mean * $regression[24][2]) + $regression[24][3]);
+                            $regression[25][1] = 'World Politics';
+                            $regression[25][2] = 1.076900902;
+                            $regression[25][3] = -1.663846831;
+                            $regression[25][4] = round(($mean * $regression[25][2]) + $regression[25][3]);
+                        }
+                    }
+
+                    $form = Form::create('addAssessment', $session->get('absoluteURL').'/modules/'.$session->get('module').'/externalAssessment_manage_details_addProcess.php?search='.$search.'&allStudents='.$allStudents);
+
+                    $form->addHiddenValue('address', $session->get('address'));
+                    $form->addHiddenValue('tawasulPersonID', $tawasulPersonID);
+                    $form->addHiddenValue('tawasulExternalAssessmentID', $tawasulExternalAssessmentID);
+
+                    $row = $form->addRow();
+                    $row->addLabel('name', __('Assessment Type'));
+                    $row->addTextField('name')->required()->readOnly()->setValue(__($rowSelect['name']));
+
+                    $row = $form->addRow();
+                    $row->addLabel('date', __('Date'));
+                    $row->addDate('date')->required();
+
+                    if ($rowSelect['allowFileUpload'] == 'Y') {
+                        $row = $form->addRow();
+                        $row->addLabel('file', __('Upload File'))->description(__('Use this to attach raw data, graphical summary, etc.'));
+                        $row->addFileUpload('file');
+                    }
+
+                    $resultField = $container->get(ExternalAssessmentFieldGateway::class)->selectFieldsByExternalAssessment($tawasulExternalAssessmentID);
+
+                    if ($resultField->rowCount() <= 0) {
+                        $form->addRow()->addAlert(__('There are no fields in this assessment.'), 'warning');
+                    } else {
+                        $fieldGroup = $resultField->fetchAll(\PDO::FETCH_GROUP);
+                        $count = 0;
+
+                        foreach ($fieldGroup as $category => $fields) {
+                            $categoryName = (strpos($category, '_') !== false)? substr($category, (strpos($category, '_') + 1)) : $category;
+
+                            $row = $form->addRow();
+                            $row->addHeading($categoryName);
+                            $row->addContent(__('Grade'))->wrap('<b>', '</b>')->setClass('right');
+
+                            foreach ($fields as $field) {
+                                $preselectValue = null;
+                                $mode = 'id';
+                                if ($copyToGCSECheck == 'Y' and $field['category'] == '0_Target Grade') {
+                                    $preselectValue = isset($grades[$field['name']][0])? $grades[$field['name']][0] : '';
+                                }
+                                if (($copyToIBCheck == 'Target' || $copyToIBCheck == 'Final') && $field['category'] == '0_Target Grade') {
+                                    //Compare subject name to $regression and find entry for current subject
+                                    foreach ($regression as $subject) {
+                                        //Compare subject name to $regression and find entry for current subject
+                                        $match = true;
+                                        $subjectName = explode(' ', $subject[1]);
+                                        foreach ($subjectName as $subjectToken) {
+                                            //General/rough match check for all subjects
+                                            if (stripos($field['name'], $subjectToken) === false) {
+                                                $match = false;
+                                            }
+                                            //Exact check for mathematics SL & HL
+                                            if (stripos($field['name'], 'Mathematics')) {
+                                                if ($field['name'] != $subject) {
+                                                    $match = false;
+                                                }
+                                            }
+                                        }
+
+                                        if ($match == true) {
+                                            $preselectValue = $subject[4];
+                                        }
+                                    }
+                                    $mode = 'value';
+                                }
+
+                                $form->addHiddenValue($count.'-tawasulExternalAssessmentFieldID', $field['tawasulExternalAssessmentFieldID']);
+                                $gradeScale = renderGradeScaleSelect($connection2, $guid, $field['tawasulScaleID'], $count.'-tawasulScaleGradeID', 'id', false, '150', $mode, $preselectValue);
+
+                                $row = $form->addRow();
+                                $row->addLabel($count.'-tawasulScaleGradeID', $field['name'])->setTitle($field['usage']);
+                                $row->addContent($gradeScale);
+
+                                $count++;
+                            }
+                        }
+
+                        $form->addHiddenValue('count', $count);
+                    }
+
+                    $row = $form->addRow();
+                    $row->addFooter();
+                    $row->addSubmit();
+
+                    echo $form->getOutput();
+                }
+            }
+        }
+    }
+}

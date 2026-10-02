@@ -1,0 +1,44 @@
+details:
+    type: timetableDaysToDates
+    category: Timetable
+    name: Tie Days to Dates
+    table: tawasulTTDayDate
+    modes: { update: true, insert: true, export: true }
+access:
+    module: Timetable Admin
+    action:  Tie Days to Dates
+primaryKey:
+    tawasulTTDayDateID
+fields:
+    tawasulTTID: 
+        name: "Timetable"
+        desc: "Timetable short name. Must already exist."
+        args: { filter: string, required: true, custom: true }
+        relationship: { table: tawasulTT, key: tawasulTTID, field: nameShort  }
+    
+    tawasulTTDayID: 
+        name: "Day"
+        desc: "Timetable day short name. Must already exist."
+        args: { filter: string, required: true, custom: true }
+        relationship: { table: tawasulTTDay, key: tawasulTTDayID, field: nameShort  }
+    date: 
+        name: "Date"
+        desc: "Format: YYYY-MM-DD"
+        args: { filter: date, required: true }
+tables:
+    tawasulTTDayDate: 
+        primaryKey:
+            tawasulTTDayDateID
+        fields:
+            - tawasulTTDayID
+            - date
+    tawasulTTDay:
+        primaryKey:
+            tawasulTTDayID
+        fields:
+            - tawasulTTID
+            - tawasulTTColumnID
+            - name
+            - nameShort
+            - color
+            - fontColor

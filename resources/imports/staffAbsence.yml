@@ -1,0 +1,101 @@
+details:
+    type: staffAbsence
+    category: Substitute
+    name: Staff Absences
+    table: tawasulStaffAbsence
+    modes: { update: true, insert: true, export: true }
+access:
+    module: Staff
+    action: Manage Staff Absences
+fields:
+    tawasulSchoolYearID: 
+        name: "School Year"
+        desc: "School year name, as set in School Admin. Must already exist."
+        args: { filter: schoolyear, required: true, custom: true, readonly: [tawasulStaffAbsenceDate]  }
+        relationship: { table: tawasulSchoolYear, key: tawasulSchoolYearID, field: name  }
+    tawasulPersonID:
+        name: "Staff Member"
+        desc: "Username or Email (if unique)"
+        args: { filter: nospaces, required: true, readonly: [tawasulStaffAbsenceDate]  }
+        relationship: { table: tawasulPerson, key: tawasulPersonID, field: username|email  }
+    tawasulStaffAbsenceTypeID:
+        name: "Type"
+        desc: ""
+        args: { filter: string, custom: true, required: true }
+        relationship: { table: tawasulStaffAbsenceType, key: tawasulStaffAbsenceTypeID, field: name  }
+    reason:
+        name: "Reason"
+        desc: ""
+        args: { filter: string, custom: true }
+    comment:
+        name: "Comment"
+        desc: ""
+        args: { filter: string, custom: true, readonly: [tawasulStaffAbsenceDate] }
+    status:
+        name: "Status"
+        desc: ""
+        args: { filter: string, custom: true }
+    date: 
+        name: "Date"
+        desc: "Must be unique. Format: YYYY-MM-DD"
+        args: { filter: date, required: true }
+    allDay:
+        name: "All Day"
+        desc: ""
+        args: { filter: yesno, custom: true, required: true }
+    timeStart:
+        name: "Start Time"
+        desc: "Format: hh:mm (24hr)"
+        args: { filter: time, custom: true }
+    timeEnd:
+        name: "End Time"
+        desc: "Format: hh:mm (24hr)"
+        args: { filter: time, custom: true }
+    value:
+        name: "Value"
+        desc: ""
+        args: { filter: decimal, custom: true, required: true }
+    timestampCreator:
+        name: "Created On"
+        desc: ""
+        args: { filter: timestamp, custom: true }
+    tawasulPersonIDCreator:
+        name: "Created By"
+        desc: "Username or Email (if unique)"
+        args: { filter: nospaces, custom: true, required: true }
+        relationship: { table: tawasulPerson, key: tawasulPersonID, field: username|email  }
+    tawasulStaffAbsenceID:
+        name: "Absence ID"
+        desc: ""
+        args: { filter: string, linked: comment, readonly: [tawasulStaffAbsence] }
+        relationship: { table: tawasulStaffAbsence, key: tawasulStaffAbsenceID, field: [comment, tawasulPersonID, tawasulSchoolYearID]  }
+tables:
+    tawasulStaffAbsence: 
+        primaryKey:
+            tawasulStaffAbsenceID
+        uniqueKeys:
+            - [comment, tawasulPersonID, tawasulSchoolYearID]
+        fields:
+            - tawasulSchoolYearID
+            - tawasulPersonID
+            - tawasulStaffAbsenceTypeID
+            - reason
+            - comment
+            - status
+            - timestampCreator
+            - tawasulPersonIDCreator
+    tawasulStaffAbsenceDate: 
+        primaryKey:
+            tawasulStaffAbsenceDateID
+        uniqueKeys:
+            - [ tawasulStaffAbsenceID, date ]
+        fields:
+            - tawasulStaffAbsenceID
+            - date
+            - allDay
+            - timeStart
+            - timeEnd
+            - value
+            - comment
+            - tawasulPersonID
+            - tawasulSchoolYearID

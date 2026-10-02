@@ -1,0 +1,1227 @@
+# Gibbon REST API — developer reference
+
+**Base URL:** `https://your-gibbon.example/modules/Rest%20API/api.php/v2`
+**Version:** 3.3.03
+**Spec file:** `openapi.json` (OpenAPI 3.0, ready for Postman/Swagger UI)
+
+## Table of contents
+
+1. [Authentication](#authentication)
+2. [Rate limits](#rate-limits)
+3. [Error format](#error-format)
+4. [Reading collections](#reading-collections)
+5. [Writing data](#writing-data)
+6. [Bulk operations](#bulk-operations)
+7. [Exports](#exports)
+8. [Search and aggregation](#search-and-aggregation)
+9. [Relation traversal](#relation-traversal)
+10. [File transfers](#file-transfers)
+11. [Composite endpoints](#composite-endpoints)
+12. [Webhooks](#webhooks)
+13. [Batch requests](#batch-requests)
+14. [Resource index](#resource-index)
+15. [Scopes](#scopes)
+16. [Meta endpoints](#meta-endpoints)
+
+---
+
+## Authentication
+
+Two credential types are accepted, sent in the `Authorization` header as
+a bearer token.
+
+| Type | Prefix | Lifetime | Notes |
+|------|--------|----------|-------|
+| API key | `gib_` | Permanent | Long-lived, tied to a person/role, per-minute limit, IP allow-list |
+| User token | `tok_` | Minutes | Short-lived, from `/auth/login`, refreshable via `/auth/refresh` |
+
+### Login (password grant)
+
+```http
+POST /auth/login
+Content-Type: application/json
+
+{"username":"teacher","password":"secret","scopes":"students.read,attendance.write"}
+```
+
+Returns a token pair and the linked person:
+
+```json
+{
+  "data": {
+    "token": "tok_...",
+    "refreshToken": "ref_...",
+    "expiresIn": 120,
+    "user": { "tawasulPersonID": "123", "username": "teacher", "surname": "Smith" }
+  }
+}
+```
+
+### Refresh a token
+
+```http
+POST /auth/refresh
+Content-Type: application/json
+
+{"refreshToken":"ref_..."}
+```
+
+### Identify the current credential
+
+```http
+GET /auth/me
+Authorization: Bearer tok_...
+```
+
+Shows the credential type, granted scopes, linked person and roles.
+
+### Logout
+
+```http
+POST /auth/logout
+Authorization: Bearer tok_...
+```
+
+Revokes the current user token (API keys must be revoked in the Gibbon UI).
+
+---
+
+## Rate limits
+
+| Credential | Source | Default limit | Window |
+|------------|--------|---------------|--------|
+| API key | key's `rateLimit` setting | configurable | 1 minute |
+| User token | `tokenRateLimit` setting | 240 | 1 minute |
+| Login attempts | `tokenRateLimit` setting | configurable | 1 minute |
+
+Every response carries `X-RateLimit-Limit`, `X-RateLimit-Remaining` and
+`X-RateLimit-Reset` (Unix timestamp). Exceeding the limit returns 429.
+Repeated failed logins from one IP are temporarily locked out.
+
+---
+
+## Error format
+
+All errors use the same JSON shape and carry an `X-Request-Id`:
+
+```json
+{
+  "error": { "code": "forbidden", "message": "This credential does not hold the \"x.write\" scope.", "details": { ... } },
+  "meta": { "requestID": "req_a1b2c3d4e5f6a7b8" }
+}
+```
+
+| Status | Code | Meaning |
+|--------|------|---------|
+| 400 | bad_request | Invalid JSON or missing required parameter |
+| 401 | unauthorized | No credential, or it was not recognised |
+| 403 | forbidden | Scope missing, IP blocked, or no role permission |
+| 404 | not_found | Resource or record does not exist |
+| 405 | method_not_allowed | The HTTP method is not supported on this path |
+| 409 | conflict | A record with that unique value already exists |
+| 422 | validation_failed | Input failed validation rules |
+| 429 | rate_limited | Too many requests in the current window |
+| 503 | unavailable | The API or database is not reachable |
+
+---
+
+## Reading collections
+
+```http
+GET /students?page=1&pageSize=25&sort=-surname&search=John&fields=tawasulPersonID,preferredName,surname
+Authorization: Bearer gib_...
+```
+
+### Query parameters (all collections)
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `page` | integer | Page number, starting at 1. Defaults to 1. |
+| `pageSize` | integer | Records per page (max configurable). Defaults to 25. |
+| `sort` | string | Sort field. Prefix with `-` for descending. |
+| `search` | string | Free-text search across the searchable fields. |
+| `fields` | string | Comma-separated list of fields to return. |
+| `tawasulSchoolYearID` | integer | Restrict to one school year. |
+
+Each resource also accepts its own `filters` (see the resource table below).
+Numeric and date filters accept `<filter>From` and `<filter>To` suffixes.
+
+### Single record
+
+```http
+GET /students/GS001234
+Authorization: Bearer gib_...
+```
+
+---
+
+## Writing data
+
+Create, update and delete all require the `<resource>.write` scope **and** the
+linked Gibbon user's role to hold the matching module action (when role
+permissions are enforced). POST returns 201; PATCH/PUT/DELETE return 200.
+
+### Create (POST)
+
+```http
+POST /attendance
+Authorization: Bearer tok_...
+Content-Type: application/json
+
+{"tawasulCourseClassID":"12345","tawasulPersonID":"GS001234","date":"2026-09-18","status":"Present"}
+```
+
+### Partial update (PATCH)
+
+```http
+PATCH /attendance/ATT001
+Authorization: Bearer tok_...
+Content-Type: application/json
+
+{"status":"Late"}
+```
+
+### Full replace (PUT)
+
+```http
+PUT /attendance/ATT001
+Authorization: Bearer tok_...
+Content-Type: application/json
+
+{"tawasulCourseClassID":"12345","tawasulPersonID":"GS001234","date":"2026-09-18","status":"Present"}
+```
+
+PUT replaces the entire record — omit a required field and you get 422.
+
+### Delete (DELETE)
+
+```http
+DELETE /attendance/ATT001
+Authorization: Bearer tok_...
+```
+
+---
+
+## Bulk operations
+
+Create, update or delete up to 500 records in one transaction. Every item
+must succeed or the whole request is rolled back.
+
+```http
+POST /attendance/bulk
+Authorization: Bearer tok_...
+Content-Type: application/json
+
+{
+  "items": [
+    {"tawasulCourseClassID":"12345","tawasulPersonID":"GS001234","date":"2026-09-18","status":"Present"}
+  ]
+}
+```
+
+Each item is either a new object, an object with the primary key to update,
+or `{"op":"delete","id":"ATT001"}` to remove a record.
+
+---
+
+## Exports
+
+Download an entire resource as CSV — no pagination, one row per record.
+
+```http
+GET /students/export
+Authorization: Bearer gib_...
+Accept: text/csv
+```
+
+---
+
+## Search and aggregation
+
+### Free-text search
+`GET /students?search=Smith` — searches the resource's `search` columns.
+
+### Distinct values
+`GET /students/distinct?field=tawasulYearGroupID` — unique non-null values for a column.
+
+### Aggregate summary
+`GET /attendance/aggregate?by=status` — counts grouped by one or more fields.
+
+---
+
+## Relation traversal
+
+Follow a foreign-key link from one record to its related record or list:
+
+```http
+GET /students/GS001234/attendance
+Authorization: Bearer gib_...
+```
+
+The relation name appears in each resource's OpenAPI spec under the path
+`/{resource}/{id}/{relation}`.
+
+---
+
+## File transfers
+
+File transfer is off by default. An administrator enables it in the Rest API
+settings. Once enabled:
+
+```http
+GET  /files/{resource}/{id}           # list file fields on a record
+GET  /files/{resource}/{id}/{field}  # download (add ?disposition=inline to view)
+POST /files/{resource}/{id}/{field}  # attach or replace (multipart or base64 JSON)
+DELETE /files/{resource}/{id}/{field}# detach and delete the file
+```
+
+Uploads are rejected if the extension is in the forbidden list (`.php`, `.html`,
+etc.) or if the file exceeds the configured maximum size (413).
+
+---
+
+## Composite endpoints
+
+Convenience endpoints that join data across multiple resources in a single call.
+Each part is included only when the caller holds the read scope for it.
+
+| Endpoint | Description |
+|----------|-------------|
+| `GET /students/{id}/profile` | Student, family, enrolment, timetable, attendance summary, recent behaviour |
+| `GET /staff/{id}/profile` | Staff member, contract, roles, departments, taught classes, absences |
+| `GET /families/{id}/profile` | Family, adults with contact details, children |
+| `GET /courses/{id}/overview` | Course, its classes, and enrolment count per class |
+| `GET /students/{id}/finance` | Invoices, fees and payments with outstanding totals |
+| `GET /students/{id}/timetable` | Timetabled periods for one person, by day |
+| `GET /classes/{id}/roster` | Students and teachers attached to one class |
+
+---
+
+## Webhooks
+
+When enabled, every create/update/delete is POSTed to subscribed URLs as
+a `{resource}.created`, `{resource}.updated`, `{resource}.replaced` or
+`{resource}.deleted` event. Each delivery carries an `X-Gibbon-Signature`
+header: `sha256=` HMAC-SHA256 of the raw body using the subscription secret.
+
+### Subscribe
+
+```http
+POST /webhooks
+Authorization: Bearer tok_...
+Content-Type: application/json
+
+{"name":"Attendance changes","url":"https://hooks.example.com/gibbon","events":"attendance.created,attendance.updated"}
+```
+
+---
+
+## Batch requests
+
+Send multiple API calls in one HTTP request to reduce round-trips:
+
+```http
+POST /batch
+Authorization: Bearer tok_...
+Content-Type: application/json
+
+{"requests":[{"method":"GET","path":"/students?pageSize=1"},{"method":"GET","path":"/classes/A24"}]}
+```
+
+Returns an array of per-request responses, each with its own status code.
+
+---
+
+## Resource index
+
+Resources are grouped by area. Each supports `GET` (collection and single),
+and most support `POST`, `PATCH`, `PUT`, `DELETE`. Read the full OpenAPI spec
+at `GET /openapi.json` for field types, filters and exact parameters.
+
+
+### Academics
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `class-enrolments` | Class Enrolments | GET,POST,PATCH,PUT,DELETE | `enrolments.read` | `enrolments.write` |
+| `classes` | Classes | GET,POST,PATCH,PUT,DELETE | `classes.read` | `classes.write` |
+| `courses` | Courses | GET,POST,PATCH,PUT,DELETE | `courses.read` | `courses.write` |
+| `lessons` | Lessons | GET,POST,PATCH,PUT,DELETE | `planner.read` | `planner.write` |
+| `markbook-columns` | Markbook Columns | GET,POST,PATCH,PUT,DELETE | `markbook.read` | `markbook.write` |
+| `markbook-entries` | Markbook Entries | GET,POST,PATCH,PUT,DELETE | `markbook.read` | `markbook.write` |
+| `timetable-dates` | Timetable Dates | GET,POST,PATCH,PUT,DELETE | `timetable.read` | `timetable.write` |
+| `timetable-days` | Timetable Days | GET,POST,PATCH,PUT,DELETE | `timetable.read` | `timetable.write` |
+| `timetable-periods` | Timetable Periods | GET,POST,PATCH,PUT,DELETE | `timetable.read` | `timetable.write` |
+| `timetable-slots` | Timetable Slots | GET,POST,PATCH,PUT,DELETE | `timetable.read` | `timetable.write` |
+| `timetables` | Timetables | GET,POST,PATCH,PUT,DELETE | `timetable.read` | `timetable.write` |
+| `units` | Units | GET,POST,PATCH,PUT,DELETE | `units.read` | `units.write` |
+
+### Messenger
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `chat-attachments` | Chat Attachments | GET,POST,PATCH,PUT,DELETE | `messenger.read` | `messenger.write` |
+| `chat-messages` | Chat Messages | GET,POST,PATCH,PUT,DELETE | `messenger.read` | `messenger.write` |
+| `chat-participants` | Chat Participants | GET,POST,PATCH,PUT,DELETE | `messenger.read` | `messenger.write` |
+| `chats` | Chats | GET,POST,PATCH,PUT,DELETE | `messenger.read` | `messenger.write` |
+
+### Modules: Badges
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `badge-awards` | Badge Awards | GET,POST,PATCH,PUT,DELETE | `badges.read` | `badges.write` |
+| `badges` | Badges | GET,POST,PATCH,PUT,DELETE | `badges.read` | `badges.write` |
+
+### Modules: Bulk Data Processor
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `bulk-job-errors` | Bulk Job Errors | GET,POST,PATCH,PUT,DELETE | `bulkjobs.read` | `bulkjobs.write` |
+| `bulk-jobs` | Bulk Jobs | GET,POST,PATCH,PUT,DELETE | `bulkjobs.read` | `bulkjobs.write` |
+
+### Modules: Clinics
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `clinic-students` | Clinic Students | GET,POST,PATCH,PUT,DELETE | `clinics.read` | `clinics.write` |
+| `clinics` | Clinics | GET,POST,PATCH,PUT,DELETE | `clinics.read` | `clinics.write` |
+
+### Modules: Communication Hub
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `delivery-log` | Delivery Log | GET,POST,PATCH,PUT,DELETE | `messaging.read` | `messaging.write` |
+| `message-templates` | Message Templates | GET,POST,PATCH,PUT,DELETE | `messaging.read` | `messaging.write` |
+| `scheduled-messages` | Scheduled Messages | GET,POST,PATCH,PUT,DELETE | `messaging.read` | `messaging.write` |
+
+### Modules: Free Learning
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `free-learning-progress` | Free Learning Progress | GET,POST,PATCH,PUT,DELETE | `freelearning.read` | `freelearning.write` |
+| `free-learning-units` | Free Learning Units | GET,POST,PATCH,PUT,DELETE | `freelearning.read` | `freelearning.write` |
+
+### Modules: House Points
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `house-point-categories` | House Point Categories | GET,POST,PATCH,PUT,DELETE | `housepoints.read` | `housepoints.write` |
+| `house-points-house` | House Points | GET,POST,PATCH,PUT,DELETE | `housepoints.read` | `housepoints.write` |
+| `house-points-student` | Student House Points | GET,POST,PATCH,PUT,DELETE | `housepoints.read` | `housepoints.write` |
+
+### Modules: Learning Analytics
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `analytics-cache` | Analytics Cache | GET,POST,PATCH,PUT,DELETE | `analytics.read` | `analytics.write` |
+
+### Modules: Professional Development
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `pd-requests` | Professional Development Requests | GET,POST,PATCH,PUT,DELETE | `pd.read` | `pd.write` |
+
+### Modules: Rest API
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `rest api-rest-api-keys` | Rest api rest api keys | GET,POST,PATCH,PUT,DELETE | `rest api-rest-api-keys.read` | `rest api-rest-api-keys.write` |
+| `rest api-rest-api-tokens` | Rest api rest api tokens | GET,POST,PATCH,PUT,DELETE | `rest api-rest-api-tokens.read` | `rest api-rest-api-tokens.write` |
+| `rest api-rest-api-webhook-deliveries` | Rest api rest api webhook deliveries | GET | `rest api-rest-api-webhook-deliveries.read` | — |
+| `rest api-rest-api-webhooks` | Rest api rest api webhooks | GET,POST,PATCH,PUT,DELETE | `rest api-rest-api-webhooks.read` | `rest api-rest-api-webhooks.write` |
+
+### Modules: Stream
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `stream-posts` | Stream Posts | GET,POST,PATCH,PUT,DELETE | `stream.read` | `stream.write` |
+
+### Modules: Tawasul OS Branches
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `tawasul os branches-tawasul-branches` | Tawasul os branches tawasul branches | GET,POST,PATCH,PUT,DELETE | `tawasul os branches-tawasul-branches.read` | `tawasul os branches-tawasul-branches.write` |
+
+### Modules: Tawasul OS Tools
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `tawasul os tools-tawasul-announcement-recipients` | Tawasul os tools tawasul announcement recipients | GET,POST,PATCH,PUT,DELETE | `tawasul os tools-tawasul-announcement-recipients.read` | `tawasul os tools-tawasul-announcement-recipients.write` |
+| `tawasul os tools-tawasul-announcements` | Tawasul os tools tawasul announcements | GET,POST,PATCH,PUT,DELETE | `tawasul os tools-tawasul-announcements.read` | `tawasul os tools-tawasul-announcements.write` |
+
+### Modules: TawasulCore
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `tawasul-core-tos-api-keys` | Tawasul core tos api keys | GET,POST,PATCH,PUT,DELETE | `tawasul-core-tos-api-keys.read` | `tawasul-core-tos-api-keys.write` |
+| `tawasul-core-tos-api-logs` | Tawasul core tos api logs | GET | `tawasul-core-tos-api-logs.read` | — |
+| `tawasul-core-tos-api-tokens` | Tawasul core tos api tokens | GET,POST,PATCH,PUT,DELETE | `tawasul-core-tos-api-tokens.read` | `tawasul-core-tos-api-tokens.write` |
+| `tawasul-core-tos-api-webhook-deliveries` | Tawasul core tos api webhook deliveries | GET | `tawasul-core-tos-api-webhook-deliveries.read` | — |
+| `tawasul-core-tos-api-webhooks` | Tawasul core tos api webhooks | GET,POST,PATCH,PUT,DELETE | `tawasul-core-tos-api-webhooks.read` | `tawasul-core-tos-api-webhooks.write` |
+
+### Modules: TawasulFinance
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `tawasul-finance-accounts` | Tawasul finance accounts | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-accounts.read` | `tawasul-finance-accounts.write` |
+| `tawasul-finance-assets` | Tawasul finance assets | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-assets.read` | `tawasul-finance-assets.write` |
+| `tawasul-finance-audit-logs` | Tawasul finance audit logs | GET | `tawasul-finance-audit-logs.read` | — |
+| `tawasul-finance-bank-reconciliations` | Tawasul finance bank reconciliations | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-bank-reconciliations.read` | `tawasul-finance-bank-reconciliations.write` |
+| `tawasul-finance-billing-schedules-2` | Tawasul finance billing schedules 2 | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-billing-schedules-2.read` | `tawasul-finance-billing-schedules-2.write` |
+| `tawasul-finance-budget-cycle-allocations-2` | Tawasul finance budget cycle allocations 2 | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-budget-cycle-allocations-2.read` | `tawasul-finance-budget-cycle-allocations-2.write` |
+| `tawasul-finance-budget-cycles-2` | Tawasul finance budget cycles 2 | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-budget-cycles-2.read` | `tawasul-finance-budget-cycles-2.write` |
+| `tawasul-finance-budget-persons-2` | Tawasul finance budget persons 2 | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-budget-persons-2.read` | `tawasul-finance-budget-persons-2.write` |
+| `tawasul-finance-cash-accounts` | Tawasul finance cash accounts | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-cash-accounts.read` | `tawasul-finance-cash-accounts.write` |
+| `tawasul-finance-cost-centers` | Tawasul finance cost centers | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-cost-centers.read` | `tawasul-finance-cost-centers.write` |
+| `tawasul-finance-depreciations` | Tawasul finance depreciations | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-depreciations.read` | `tawasul-finance-depreciations.write` |
+| `tawasul-finance-discounts` | Tawasul finance discounts | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-discounts.read` | `tawasul-finance-discounts.write` |
+| `tawasul-finance-expense-approvers-2` | Tawasul finance expense approvers 2 | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-expense-approvers-2.read` | `tawasul-finance-expense-approvers-2.write` |
+| `tawasul-finance-expense-logs-2` | Tawasul finance expense logs 2 | GET | `tawasul-finance-expense-logs-2.read` | — |
+| `tawasul-finance-fee-categories-2` | Tawasul finance fee categories 2 | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-fee-categories-2.read` | `tawasul-finance-fee-categories-2.write` |
+| `tawasul-finance-fee-items` | Tawasul finance fee items | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-fee-items.read` | `tawasul-finance-fee-items.write` |
+| `tawasul-finance-fee-plan-items` | Tawasul finance fee plan items | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-fee-plan-items.read` | `tawasul-finance-fee-plan-items.write` |
+| `tawasul-finance-fee-plans` | Tawasul finance fee plans | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-fee-plans.read` | `tawasul-finance-fee-plans.write` |
+| `tawasul-finance-fiscal-years` | Tawasul finance fiscal years | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-fiscal-years.read` | `tawasul-finance-fiscal-years.write` |
+| `tawasul-finance-invoicee-updates-2` | Tawasul finance invoicee updates 2 | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-invoicee-updates-2.read` | `tawasul-finance-invoicee-updates-2.write` |
+| `tawasul-finance-invoicees-2` | Tawasul finance invoicees 2 | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-invoicees-2.read` | `tawasul-finance-invoicees-2.write` |
+| `tawasul-finance-journal-entries` | Tawasul finance journal entries | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-journal-entries.read` | `tawasul-finance-journal-entries.write` |
+| `tawasul-finance-journal-lines` | Tawasul finance journal lines | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-journal-lines.read` | `tawasul-finance-journal-lines.write` |
+| `tawasul-finance-payment-vouchers` | Tawasul finance payment vouchers | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-payment-vouchers.read` | `tawasul-finance-payment-vouchers.write` |
+| `tawasul-finance-payroll-lines` | Tawasul finance payroll lines | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-payroll-lines.read` | `tawasul-finance-payroll-lines.write` |
+| `tawasul-finance-payroll-runs` | Tawasul finance payroll runs | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-payroll-runs.read` | `tawasul-finance-payroll-runs.write` |
+| `tawasul-finance-periods` | Tawasul finance periods | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-periods.read` | `tawasul-finance-periods.write` |
+| `tawasul-finance-petty-cashes-2` | Tawasul finance petty cashes 2 | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-petty-cashes-2.read` | `tawasul-finance-petty-cashes-2.write` |
+| `tawasul-finance-purchase-bills` | Tawasul finance purchase bills | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-purchase-bills.read` | `tawasul-finance-purchase-bills.write` |
+| `tawasul-finance-receipts` | Tawasul finance receipts | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-receipts.read` | `tawasul-finance-receipts.write` |
+| `tawasul-finance-salary-components` | Tawasul finance salary components | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-salary-components.read` | `tawasul-finance-salary-components.write` |
+| `tawasul-finance-sequences` | Tawasul finance sequences | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-sequences.read` | `tawasul-finance-sequences.write` |
+| `tawasul-finance-staff-salaries` | Tawasul finance staff salaries | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-staff-salaries.read` | `tawasul-finance-staff-salaries.write` |
+| `tawasul-finance-student-discounts` | Tawasul finance student discounts | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-student-discounts.read` | `tawasul-finance-student-discounts.write` |
+| `tawasul-finance-suppliers` | Tawasul finance suppliers | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-suppliers.read` | `tawasul-finance-suppliers.write` |
+| `tawasul-finance-transfers` | Tawasul finance transfers | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-transfers.read` | `tawasul-finance-transfers.write` |
+
+### Modules: Trip Planner
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `trip-days` | Trip Days | GET,POST,PATCH,PUT,DELETE | `trips.read` | `trips.write` |
+| `trip-people` | Trip Participants | GET,POST,PATCH,PUT,DELETE | `trips.read` | `trips.write` |
+| `trips` | Trips | GET,POST,PATCH,PUT,DELETE | `trips.read` | `trips.write` |
+
+### Modules: Workflow Engine
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `workflow-definitions` | Workflow Definitions | GET,POST,PATCH,PUT,DELETE | `workflows.read` | `workflows.write` |
+| `workflow-instance-audit` | Workflow Audit Trail | GET,POST,PATCH,PUT,DELETE | `workflows.read` | `workflows.write` |
+| `workflow-instance-steps` | Workflow Instance Steps | GET,POST,PATCH,PUT,DELETE | `workflows.read` | `workflows.write` |
+| `workflow-instances` | Workflow Instances | GET,POST,PATCH,PUT,DELETE | `workflows.read` | `workflows.write` |
+
+### Operations
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `activities` | Activities | GET,POST,PATCH,PUT,DELETE | `activities.read` | `activities.write` |
+| `activity-staff` | Activity Staff | GET,POST,PATCH,PUT,DELETE | `activities.read` | `activities.write` |
+| `activity-students` | Activity Students | GET,POST,PATCH,PUT,DELETE | `activities.read` | `activities.write` |
+| `budgets` | Budgets | GET,POST,PATCH,PUT,DELETE | `finance.read` | `finance.write` |
+| `calendar-events` | Calendar Events | GET,POST,PATCH,PUT,DELETE | `calendar.read` | `calendar.write` |
+| `expenses` | Expenses | GET,POST,PATCH,PUT,DELETE | `finance.read` | `finance.write` |
+| `fees` | Fees | GET,POST,PATCH,PUT,DELETE | `finance.read` | `finance.write` |
+| `form-submissions` | Form Submissions | GET,POST,PATCH,PUT,DELETE | `forms.read` | `forms.write` |
+| `forms` | Forms | GET,POST,PATCH,PUT,DELETE | `forms.read` | `forms.write` |
+| `invoice-fees` | Invoice Fees | GET,POST,PATCH,PUT,DELETE | `finance.read` | `finance.write` |
+| `invoices` | Invoices | GET,POST,PATCH,PUT,DELETE | `finance.read` | `finance.write` |
+| `library-events` | Library Events | GET,POST,PATCH,PUT,DELETE | `library.read` | `library.write` |
+| `library-items` | Library Items | GET,POST,PATCH,PUT,DELETE | `library.read` | `library.write` |
+| `message-receipts` | Message Receipts | GET,POST,PATCH,PUT,DELETE | `messenger.read` | `messenger.write` |
+| `messages` | Messages | GET,POST,PATCH,PUT,DELETE | `messenger.read` | `messenger.write` |
+| `staff-absence-dates` | Staff Absence Dates | GET,POST,PATCH,PUT,DELETE | `staff.absence.read` | `staff.absence.write` |
+| `staff-absences` | Staff Absences | GET,POST,PATCH,PUT,DELETE | `staff.absence.read` | `staff.absence.write` |
+| `staff-coverage` | Staff Coverage | GET,POST,PATCH,PUT,DELETE | `staff.absence.read` | `staff.absence.write` |
+| `staff-duties` | Staff Duties | GET,POST,PATCH,PUT,DELETE | `staff.duties.read` | `staff.duties.write` |
+
+### People
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `families` | Families | GET,POST,PATCH,PUT,DELETE | `families.read` | `families.write` |
+| `family-adults` | Family Adults | GET,POST,PATCH,PUT,DELETE | `families.read` | `families.write` |
+| `family-children` | Family Children | GET,POST,PATCH,PUT,DELETE | `families.read` | `families.write` |
+| `personal-documents` | Personal Documents | GET,POST,PATCH,PUT,DELETE | `documents.read` | `documents.write` |
+| `roles` | Roles | GET,POST,PATCH,PUT,DELETE | `roles.read` | `roles.write` |
+| `staff` | Staff | GET,POST,PATCH,PUT,DELETE | `staff.read` | `staff.write` |
+| `staff-contracts` | Staff Contracts | GET,POST,PATCH,PUT,DELETE | `staff.contracts.read` | `staff.contracts.write` |
+| `students` | Students | GET,POST,PATCH,PUT,DELETE | `students.read` | `students.write` |
+| `users` | Users | GET,POST,PATCH,PUT,DELETE | `users.read` | `users.write` |
+
+### School
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `calendars` | Calendars | GET,POST,PATCH,PUT,DELETE | `calendar.read` | `calendar.write` |
+| `department-staff` | Department Staff | GET,POST,PATCH,PUT,DELETE | `departments.read` | `departments.write` |
+| `departments` | Departments | GET,POST,PATCH,PUT,DELETE | `departments.read` | `departments.write` |
+| `form-groups` | Form Groups | GET,POST,PATCH,PUT,DELETE | `school.read` | `school.write` |
+| `grade-scale-grades` | Grade Scale Grades | GET,POST,PATCH,PUT,DELETE | `school.read` | `school.write` |
+| `grade-scales` | Grade Scales | GET,POST,PATCH,PUT,DELETE | `school.read` | `school.write` |
+| `houses` | Houses | GET,POST,PATCH,PUT,DELETE | `school.read` | `school.write` |
+| `school-terms` | School Terms | GET,POST,PATCH,PUT,DELETE | `school.read` | `school.write` |
+| `school-years` | School Years | GET,POST,PATCH,PUT,DELETE | `school.read` | `school.write` |
+| `spaces` | Spaces | GET,POST,PATCH,PUT,DELETE | `school.read` | `school.write` |
+| `special-days` | Special Days | GET,POST,PATCH,PUT,DELETE | `school.read` | `school.write` |
+| `year-groups` | Year Groups | GET,POST,PATCH,PUT,DELETE | `school.read` | `school.write` |
+
+### System
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `actions` | Actions | GET,POST,PATCH,PUT,DELETE | `system.read` | `system.write` |
+| `api-logs` | API Request Log | GET,POST,PATCH,PUT,DELETE | `apilogs.read` | `apilogs.write` |
+| `custom-fields` | Custom Fields | GET,POST,PATCH,PUT,DELETE | `system.read` | `system.write` |
+| `modules` | Modules | GET,POST,PATCH,PUT,DELETE | `system.read` | `system.write` |
+| `notification-events` | Notification Events | GET,POST,PATCH,PUT,DELETE | `notifications.read` | `notifications.write` |
+| `notification-listeners` | Notification Listeners | GET,POST,PATCH,PUT,DELETE | `notifications.read` | `notifications.write` |
+| `notification-templates` | Notification Templates | GET,POST,PATCH,PUT,DELETE | `notifications.read` | `notifications.write` |
+| `notifications` | Notifications | GET,POST,PATCH,PUT,DELETE | `notifications.read` | `notifications.write` |
+| `outcomes` | Outcomes | GET,POST,PATCH,PUT,DELETE | `curriculum.read` | `curriculum.write` |
+| `permissions` | Permissions | GET,POST,PATCH,PUT,DELETE | `system.read` | `system.write` |
+| `rubrics` | Rubrics | GET,POST,PATCH,PUT,DELETE | `curriculum.read` | `curriculum.write` |
+| `settings` | Settings | GET,POST,PATCH,PUT,DELETE | `system.read` | `system.write` |
+| `tawasul-activity-attendances` | Tawasul activity attendances | GET,POST,PATCH,PUT,DELETE | `tawasul-activity-attendances.read` | `tawasul-activity-attendances.write` |
+| `tawasul-activity-categories` | Tawasul activity categories | GET,POST,PATCH,PUT,DELETE | `tawasul-activity-categories.read` | `tawasul-activity-categories.write` |
+| `tawasul-activity-choices` | Tawasul activity choices | GET,POST,PATCH,PUT,DELETE | `tawasul-activity-choices.read` | `tawasul-activity-choices.write` |
+| `tawasul-activity-photos` | Tawasul activity photos | GET,POST,PATCH,PUT,DELETE | `tawasul-activity-photos.read` | `tawasul-activity-photos.write` |
+| `tawasul-activity-slots` | Tawasul activity slots | GET,POST,PATCH,PUT,DELETE | `tawasul-activity-slots.read` | `tawasul-activity-slots.write` |
+| `tawasul-activity-types` | Tawasul activity types | GET,POST,PATCH,PUT,DELETE | `tawasul-activity-types.read` | `tawasul-activity-types.write` |
+| `tawasul-admissions-accounts` | Tawasul admissions accounts | GET,POST,PATCH,PUT,DELETE | `tawasul-admissions-accounts.read` | `tawasul-admissions-accounts.write` |
+| `tawasul-admissions-applications` | Tawasul admissions applications | GET,POST,PATCH,PUT,DELETE | `tawasul-admissions-applications.read` | `tawasul-admissions-applications.write` |
+| `tawasul-alarm-confirms` | Tawasul alarm confirms | GET,POST,PATCH,PUT,DELETE | `tawasul-alarm-confirms.read` | `tawasul-alarm-confirms.write` |
+| `tawasul-alarms` | Tawasul alarms | GET,POST,PATCH,PUT,DELETE | `tawasul-alarms.read` | `tawasul-alarms.write` |
+| `tawasul-alert-types` | Tawasul alert types | GET,POST,PATCH,PUT,DELETE | `tawasul-alert-types.read` | `tawasul-alert-types.write` |
+| `tawasul-alerts` | Tawasul alerts | GET,POST,PATCH,PUT,DELETE | `tawasul-alerts.read` | `tawasul-alerts.write` |
+| `tawasul-application-form-files` | Tawasul application form files | GET,POST,PATCH,PUT,DELETE | `tawasul-application-form-files.read` | `tawasul-application-form-files.write` |
+| `tawasul-application-form-links` | Tawasul application form links | GET,POST,PATCH,PUT,DELETE | `tawasul-application-form-links.read` | `tawasul-application-form-links.write` |
+| `tawasul-application-form-relationships` | Tawasul application form relationships | GET,POST,PATCH,PUT,DELETE | `tawasul-application-form-relationships.read` | `tawasul-application-form-relationships.write` |
+| `tawasul-application-forms` | Tawasul application forms | GET,POST,PATCH,PUT,DELETE | `tawasul-application-forms.read` | `tawasul-application-forms.write` |
+| `tawasul-behaviour-follow-ups` | Tawasul behaviour follow ups | GET,POST,PATCH,PUT,DELETE | `tawasul-behaviour-follow-ups.read` | `tawasul-behaviour-follow-ups.write` |
+| `tawasul-calendar-editors` | Tawasul calendar editors | GET,POST,PATCH,PUT,DELETE | `tawasul-calendar-editors.read` | `tawasul-calendar-editors.write` |
+| `tawasul-calendar-event-persons` | Tawasul calendar event persons | GET,POST,PATCH,PUT,DELETE | `tawasul-calendar-event-persons.read` | `tawasul-calendar-event-persons.write` |
+| `tawasul-calendar-event-types` | Tawasul calendar event types | GET,POST,PATCH,PUT,DELETE | `tawasul-calendar-event-types.read` | `tawasul-calendar-event-types.write` |
+| `tawasul-countries` | Tawasul countries | GET,POST,PATCH,PUT,DELETE | `tawasul-countries.read` | `tawasul-countries.write` |
+| `tawasul-course-class-maps` | Tawasul course class maps | GET,POST,PATCH,PUT,DELETE | `tawasul-course-class-maps.read` | `tawasul-course-class-maps.write` |
+| `tawasul-crowd-assess-discusses` | Tawasul crowd assess discusses | GET,POST,PATCH,PUT,DELETE | `tawasul-crowd-assess-discusses.read` | `tawasul-crowd-assess-discusses.write` |
+| `tawasul-data-retentions` | Tawasul data retentions | GET,POST,PATCH,PUT,DELETE | `tawasul-data-retentions.read` | `tawasul-data-retentions.write` |
+| `tawasul-days-of-weeks` | Tawasul days of weeks | GET,POST,PATCH,PUT,DELETE | `tawasul-days-of-weeks.read` | `tawasul-days-of-weeks.write` |
+| `tawasul-department-resources` | Tawasul department resources | GET,POST,PATCH,PUT,DELETE | `tawasul-department-resources.read` | `tawasul-department-resources.write` |
+| `tawasul-discussions` | Tawasul discussions | GET,POST,PATCH,PUT,DELETE | `tawasul-discussions.read` | `tawasul-discussions.write` |
+| `tawasul-districts` | Tawasul districts | GET,POST,PATCH,PUT,DELETE | `tawasul-districts.read` | `tawasul-districts.write` |
+| `tawasul-email-templates` | Tawasul email templates | GET,POST,PATCH,PUT,DELETE | `tawasul-email-templates.read` | `tawasul-email-templates.write` |
+| `tawasul-external-assessment-fields` | Tawasul external assessment fields | GET,POST,PATCH,PUT,DELETE | `tawasul-external-assessment-fields.read` | `tawasul-external-assessment-fields.write` |
+| `tawasul-external-assessment-student-entries` | Tawasul external assessment student entries | GET,POST,PATCH,PUT,DELETE | `tawasul-external-assessment-student-entries.read` | `tawasul-external-assessment-student-entries.write` |
+| `tawasul-external-assessment-students` | Tawasul external assessment students | GET,POST,PATCH,PUT,DELETE | `tawasul-external-assessment-students.read` | `tawasul-external-assessment-students.write` |
+| `tawasul-external-assessments` | Tawasul external assessments | GET,POST,PATCH,PUT,DELETE | `tawasul-external-assessments.read` | `tawasul-external-assessments.write` |
+| `tawasul-family-relationships` | Tawasul family relationships | GET,POST,PATCH,PUT,DELETE | `tawasul-family-relationships.read` | `tawasul-family-relationships.write` |
+| `tawasul-family-updates` | Tawasul family updates | GET,POST,PATCH,PUT,DELETE | `tawasul-family-updates.read` | `tawasul-family-updates.write` |
+| `tawasul-file-extensions` | Tawasul file extensions | GET,POST,PATCH,PUT,DELETE | `tawasul-file-extensions.read` | `tawasul-file-extensions.write` |
+| `tawasul-finance-billing-schedules` | Tawasul finance billing schedules | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-billing-schedules.read` | `tawasul-finance-billing-schedules.write` |
+| `tawasul-finance-budget-cycle-allocations` | Tawasul finance budget cycle allocations | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-budget-cycle-allocations.read` | `tawasul-finance-budget-cycle-allocations.write` |
+| `tawasul-finance-budget-cycles` | Tawasul finance budget cycles | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-budget-cycles.read` | `tawasul-finance-budget-cycles.write` |
+| `tawasul-finance-budget-persons` | Tawasul finance budget persons | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-budget-persons.read` | `tawasul-finance-budget-persons.write` |
+| `tawasul-finance-expense-approvers` | Tawasul finance expense approvers | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-expense-approvers.read` | `tawasul-finance-expense-approvers.write` |
+| `tawasul-finance-expense-logs` | Tawasul finance expense logs | GET | `tawasul-finance-expense-logs.read` | — |
+| `tawasul-finance-fee-categories` | Tawasul finance fee categories | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-fee-categories.read` | `tawasul-finance-fee-categories.write` |
+| `tawasul-finance-invoicee-updates` | Tawasul finance invoicee updates | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-invoicee-updates.read` | `tawasul-finance-invoicee-updates.write` |
+| `tawasul-finance-invoicees` | Tawasul finance invoicees | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-invoicees.read` | `tawasul-finance-invoicees.write` |
+| `tawasul-finance-petty-cashes` | Tawasul finance petty cashes | GET,POST,PATCH,PUT,DELETE | `tawasul-finance-petty-cashes.read` | `tawasul-finance-petty-cashes.write` |
+| `tawasul-first-aid-follow-ups` | Tawasul first aid follow ups | GET,POST,PATCH,PUT,DELETE | `tawasul-first-aid-follow-ups.read` | `tawasul-first-aid-follow-ups.write` |
+| `tawasul-form-fields` | Tawasul form fields | GET,POST,PATCH,PUT,DELETE | `tawasul-form-fields.read` | `tawasul-form-fields.write` |
+| `tawasul-form-pages` | Tawasul form pages | GET,POST,PATCH,PUT,DELETE | `tawasul-form-pages.read` | `tawasul-form-pages.write` |
+| `tawasul-form-uploads` | Tawasul form uploads | GET,POST,PATCH,PUT,DELETE | `tawasul-form-uploads.read` | `tawasul-form-uploads.write` |
+| `tawasul-group-persons` | Tawasul group persons | GET,POST,PATCH,PUT,DELETE | `tawasul-group-persons.read` | `tawasul-group-persons.write` |
+| `tawasul-groups` | Tawasul groups | GET,POST,PATCH,PUT,DELETE | `tawasul-groups.read` | `tawasul-groups.write` |
+| `tawasul-hooks` | Tawasul hooks | GET,POST,PATCH,PUT,DELETE | `tawasul-hooks.read` | `tawasul-hooks.write` |
+| `tawasul-in-archives` | Tawasul in archives | GET | `tawasul-in-archives.read` | — |
+| `tawasul-in-assistants` | Tawasul in assistants | GET,POST,PATCH,PUT,DELETE | `tawasul-in-assistants.read` | `tawasul-in-assistants.write` |
+| `tawasul-in-descriptors` | Tawasul in descriptors | GET,POST,PATCH,PUT,DELETE | `tawasul-in-descriptors.read` | `tawasul-in-descriptors.write` |
+| `tawasul-in-investigation-contributions` | Tawasul in investigation contributions | GET,POST,PATCH,PUT,DELETE | `tawasul-in-investigation-contributions.read` | `tawasul-in-investigation-contributions.write` |
+| `tawasul-in-investigations` | Tawasul in investigations | GET,POST,PATCH,PUT,DELETE | `tawasul-in-investigations.read` | `tawasul-in-investigations.write` |
+| `tawasul-internal-assessment-columns` | Tawasul internal assessment columns | GET,POST,PATCH,PUT,DELETE | `tawasul-internal-assessment-columns.read` | `tawasul-internal-assessment-columns.write` |
+| `tawasul-internal-assessment-entries` | Tawasul internal assessment entries | GET,POST,PATCH,PUT,DELETE | `tawasul-internal-assessment-entries.read` | `tawasul-internal-assessment-entries.write` |
+| `tawasul-languages` | Tawasul languages | GET,POST,PATCH,PUT,DELETE | `tawasul-languages.read` | `tawasul-languages.write` |
+| `tawasul-library-shelf-items` | Tawasul library shelf items | GET,POST,PATCH,PUT,DELETE | `tawasul-library-shelf-items.read` | `tawasul-library-shelf-items.write` |
+| `tawasul-library-shelfs` | Tawasul library shelfs | GET,POST,PATCH,PUT,DELETE | `tawasul-library-shelfs.read` | `tawasul-library-shelfs.write` |
+| `tawasul-library-types` | Tawasul library types | GET,POST,PATCH,PUT,DELETE | `tawasul-library-types.read` | `tawasul-library-types.write` |
+| `tawasul-logs` | Tawasul logs | GET | `tawasul-logs.read` | — |
+| `tawasul-markbook-targets` | Tawasul markbook targets | GET,POST,PATCH,PUT,DELETE | `tawasul-markbook-targets.read` | `tawasul-markbook-targets.write` |
+| `tawasul-markbook-weights` | Tawasul markbook weights | GET,POST,PATCH,PUT,DELETE | `tawasul-markbook-weights.read` | `tawasul-markbook-weights.write` |
+| `tawasul-medical-conditions` | Tawasul medical conditions | GET,POST,PATCH,PUT,DELETE | `tawasul-medical-conditions.read` | `tawasul-medical-conditions.write` |
+| `tawasul-messenger-canned-responses` | Tawasul messenger canned responses | GET,POST,PATCH,PUT,DELETE | `tawasul-messenger-canned-responses.read` | `tawasul-messenger-canned-responses.write` |
+| `tawasul-messenger-mailing-list-recipients` | Tawasul messenger mailing list recipients | GET,POST,PATCH,PUT,DELETE | `tawasul-messenger-mailing-list-recipients.read` | `tawasul-messenger-mailing-list-recipients.write` |
+| `tawasul-messenger-mailing-lists` | Tawasul messenger mailing lists | GET,POST,PATCH,PUT,DELETE | `tawasul-messenger-mailing-lists.read` | `tawasul-messenger-mailing-lists.write` |
+| `tawasul-messenger-targets` | Tawasul messenger targets | GET,POST,PATCH,PUT,DELETE | `tawasul-messenger-targets.read` | `tawasul-messenger-targets.write` |
+| `tawasul-migrations` | Tawasul migrations | GET | `tawasul-migrations.read` | — |
+| `tawasul-payments` | Tawasul payments | GET,POST,PATCH,PUT,DELETE | `tawasul-payments.read` | `tawasul-payments.write` |
+| `tawasul-person-medical-condition-updates` | Tawasul person medical condition updates | GET,POST,PATCH,PUT,DELETE | `tawasul-person-medical-condition-updates.read` | `tawasul-person-medical-condition-updates.write` |
+| `tawasul-person-medical-updates` | Tawasul person medical updates | GET,POST,PATCH,PUT,DELETE | `tawasul-person-medical-updates.read` | `tawasul-person-medical-updates.write` |
+| `tawasul-person-photos` | Tawasul person photos | GET,POST,PATCH,PUT,DELETE | `tawasul-person-photos.read` | `tawasul-person-photos.write` |
+| `tawasul-person-resets` | Tawasul person resets | GET,POST,PATCH,PUT,DELETE | `tawasul-person-resets.read` | `tawasul-person-resets.write` |
+| `tawasul-person-status-logs` | Tawasul person status logs | GET | `tawasul-person-status-logs.read` | — |
+| `tawasul-person-updates` | Tawasul person updates | GET,POST,PATCH,PUT,DELETE | `tawasul-person-updates.read` | `tawasul-person-updates.write` |
+| `tawasul-personal-document-types` | Tawasul personal document types | GET,POST,PATCH,PUT,DELETE | `tawasul-personal-document-types.read` | `tawasul-personal-document-types.write` |
+| `tawasul-planner-entry-discusses` | Tawasul planner entry discusses | GET,POST,PATCH,PUT,DELETE | `tawasul-planner-entry-discusses.read` | `tawasul-planner-entry-discusses.write` |
+| `tawasul-planner-entry-guests` | Tawasul planner entry guests | GET,POST,PATCH,PUT,DELETE | `tawasul-planner-entry-guests.read` | `tawasul-planner-entry-guests.write` |
+| `tawasul-planner-entry-homeworks` | Tawasul planner entry homeworks | GET,POST,PATCH,PUT,DELETE | `tawasul-planner-entry-homeworks.read` | `tawasul-planner-entry-homeworks.write` |
+| `tawasul-planner-entry-outcomes` | Tawasul planner entry outcomes | GET,POST,PATCH,PUT,DELETE | `tawasul-planner-entry-outcomes.read` | `tawasul-planner-entry-outcomes.write` |
+| `tawasul-planner-entry-student-homeworks` | Tawasul planner entry student homeworks | GET,POST,PATCH,PUT,DELETE | `tawasul-planner-entry-student-homeworks.read` | `tawasul-planner-entry-student-homeworks.write` |
+| `tawasul-planner-entry-student-trackers` | Tawasul planner entry student trackers | GET,POST,PATCH,PUT,DELETE | `tawasul-planner-entry-student-trackers.read` | `tawasul-planner-entry-student-trackers.write` |
+| `tawasul-planner-parent-weekly-email-summaries` | Tawasul planner parent weekly email summaries | GET,POST,PATCH,PUT,DELETE | `tawasul-planner-parent-weekly-email-summaries.read` | `tawasul-planner-parent-weekly-email-summaries.write` |
+| `tawasul-report-archive-entries` | Tawasul report archive entries | GET | `tawasul-report-archive-entries.read` | — |
+| `tawasul-report-archives` | Tawasul report archives | GET | `tawasul-report-archives.read` | — |
+| `tawasul-report-prototype-sections` | Tawasul report prototype sections | GET,POST,PATCH,PUT,DELETE | `tawasul-report-prototype-sections.read` | `tawasul-report-prototype-sections.write` |
+| `tawasul-report-template-fonts` | Tawasul report template fonts | GET,POST,PATCH,PUT,DELETE | `tawasul-report-template-fonts.read` | `tawasul-report-template-fonts.write` |
+| `tawasul-report-template-sections` | Tawasul report template sections | GET,POST,PATCH,PUT,DELETE | `tawasul-report-template-sections.read` | `tawasul-report-template-sections.write` |
+| `tawasul-report-templates` | Tawasul report templates | GET,POST,PATCH,PUT,DELETE | `tawasul-report-templates.read` | `tawasul-report-templates.write` |
+| `tawasul-reporting-accesses` | Tawasul reporting accesses | GET,POST,PATCH,PUT,DELETE | `tawasul-reporting-accesses.read` | `tawasul-reporting-accesses.write` |
+| `tawasul-reporting-criteria-types` | Tawasul reporting criteria types | GET,POST,PATCH,PUT,DELETE | `tawasul-reporting-criteria-types.read` | `tawasul-reporting-criteria-types.write` |
+| `tawasul-reporting-criterias` | Tawasul reporting criterias | GET,POST,PATCH,PUT,DELETE | `tawasul-reporting-criterias.read` | `tawasul-reporting-criterias.write` |
+| `tawasul-reporting-cycles` | Tawasul reporting cycles | GET,POST,PATCH,PUT,DELETE | `tawasul-reporting-cycles.read` | `tawasul-reporting-cycles.write` |
+| `tawasul-reporting-progresses` | Tawasul reporting progresses | GET,POST,PATCH,PUT,DELETE | `tawasul-reporting-progresses.read` | `tawasul-reporting-progresses.write` |
+| `tawasul-reporting-proofs` | Tawasul reporting proofs | GET,POST,PATCH,PUT,DELETE | `tawasul-reporting-proofs.read` | `tawasul-reporting-proofs.write` |
+| `tawasul-reporting-scopes` | Tawasul reporting scopes | GET,POST,PATCH,PUT,DELETE | `tawasul-reporting-scopes.read` | `tawasul-reporting-scopes.write` |
+| `tawasul-reporting-values` | Tawasul reporting values | GET,POST,PATCH,PUT,DELETE | `tawasul-reporting-values.read` | `tawasul-reporting-values.write` |
+| `tawasul-reports` | Tawasul reports | GET,POST,PATCH,PUT,DELETE | `tawasul-reports.read` | `tawasul-reports.write` |
+| `tawasul-resource-tags` | Tawasul resource tags | GET,POST,PATCH,PUT,DELETE | `tawasul-resource-tags.read` | `tawasul-resource-tags.write` |
+| `tawasul-resources` | Tawasul resources | GET,POST,PATCH,PUT,DELETE | `tawasul-resources.read` | `tawasul-resources.write` |
+| `tawasul-rubric-cells` | Tawasul rubric cells | GET,POST,PATCH,PUT,DELETE | `tawasul-rubric-cells.read` | `tawasul-rubric-cells.write` |
+| `tawasul-rubric-columns` | Tawasul rubric columns | GET,POST,PATCH,PUT,DELETE | `tawasul-rubric-columns.read` | `tawasul-rubric-columns.write` |
+| `tawasul-rubric-entries` | Tawasul rubric entries | GET,POST,PATCH,PUT,DELETE | `tawasul-rubric-entries.read` | `tawasul-rubric-entries.write` |
+| `tawasul-rubric-rows` | Tawasul rubric rows | GET,POST,PATCH,PUT,DELETE | `tawasul-rubric-rows.read` | `tawasul-rubric-rows.write` |
+| `tawasul-sessions` | Tawasul sessions | GET | `tawasul-sessions.read` | — |
+| `tawasul-space-persons` | Tawasul space persons | GET,POST,PATCH,PUT,DELETE | `tawasul-space-persons.read` | `tawasul-space-persons.write` |
+| `tawasul-staff-absence-types` | Tawasul staff absence types | GET,POST,PATCH,PUT,DELETE | `tawasul-staff-absence-types.read` | `tawasul-staff-absence-types.write` |
+| `tawasul-staff-application-form-files` | Tawasul staff application form files | GET,POST,PATCH,PUT,DELETE | `tawasul-staff-application-form-files.read` | `tawasul-staff-application-form-files.write` |
+| `tawasul-staff-application-forms` | Tawasul staff application forms | GET,POST,PATCH,PUT,DELETE | `tawasul-staff-application-forms.read` | `tawasul-staff-application-forms.write` |
+| `tawasul-staff-coverage-dates` | Tawasul staff coverage dates | GET,POST,PATCH,PUT,DELETE | `tawasul-staff-coverage-dates.read` | `tawasul-staff-coverage-dates.write` |
+| `tawasul-staff-duty-persons` | Tawasul staff duty persons | GET,POST,PATCH,PUT,DELETE | `tawasul-staff-duty-persons.read` | `tawasul-staff-duty-persons.write` |
+| `tawasul-staff-job-openings` | Tawasul staff job openings | GET,POST,PATCH,PUT,DELETE | `tawasul-staff-job-openings.read` | `tawasul-staff-job-openings.write` |
+| `tawasul-staff-updates` | Tawasul staff updates | GET,POST,PATCH,PUT,DELETE | `tawasul-staff-updates.read` | `tawasul-staff-updates.write` |
+| `tawasul-strings` | Tawasul strings | GET,POST,PATCH,PUT,DELETE | `tawasul-strings.read` | `tawasul-strings.write` |
+| `tawasul-student-note-categories` | Tawasul student note categories | GET,POST,PATCH,PUT,DELETE | `tawasul-student-note-categories.read` | `tawasul-student-note-categories.write` |
+| `tawasul-student-notes` | Tawasul student notes | GET,POST,PATCH,PUT,DELETE | `tawasul-student-notes.read` | `tawasul-student-notes.write` |
+| `tawasul-substitutes` | Tawasul substitutes | GET,POST,PATCH,PUT,DELETE | `tawasul-substitutes.read` | `tawasul-substitutes.write` |
+| `tawasul-themes` | Tawasul themes | GET,POST,PATCH,PUT,DELETE | `tawasul-themes.read` | `tawasul-themes.write` |
+| `tawasul-tt-columns` | Tawasul tt columns | GET,POST,PATCH,PUT,DELETE | `tawasul-tt-columns.read` | `tawasul-tt-columns.write` |
+| `tawasul-tt-day-row-class-exceptions` | Tawasul tt day row class exceptions | GET,POST,PATCH,PUT,DELETE | `tawasul-tt-day-row-class-exceptions.read` | `tawasul-tt-day-row-class-exceptions.write` |
+| `tawasul-tt-imports` | Tawasul tt imports | GET,POST,PATCH,PUT,DELETE | `tawasul-tt-imports.read` | `tawasul-tt-imports.write` |
+| `tawasul-tt-space-bookings` | Tawasul tt space bookings | GET,POST,PATCH,PUT,DELETE | `tawasul-tt-space-bookings.read` | `tawasul-tt-space-bookings.write` |
+| `tawasul-tt-space-changes` | Tawasul tt space changes | GET,POST,PATCH,PUT,DELETE | `tawasul-tt-space-changes.read` | `tawasul-tt-space-changes.write` |
+| `tawasul-unit-blocks` | Tawasul unit blocks | GET,POST,PATCH,PUT,DELETE | `tawasul-unit-blocks.read` | `tawasul-unit-blocks.write` |
+| `tawasul-unit-class-blocks` | Tawasul unit class blocks | GET,POST,PATCH,PUT,DELETE | `tawasul-unit-class-blocks.read` | `tawasul-unit-class-blocks.write` |
+| `tawasul-unit-classes` | Tawasul unit classes | GET,POST,PATCH,PUT,DELETE | `tawasul-unit-classes.read` | `tawasul-unit-classes.write` |
+| `tawasul-unit-outcomes` | Tawasul unit outcomes | GET,POST,PATCH,PUT,DELETE | `tawasul-unit-outcomes.read` | `tawasul-unit-outcomes.write` |
+| `tawasul-username-formats` | Tawasul username formats | GET,POST,PATCH,PUT,DELETE | `tawasul-username-formats.read` | `tawasul-username-formats.write` |
+| `tawasuli18ns` | Tawasuli18ns | GET,POST,PATCH,PUT,DELETE | `tawasuli18ns.read` | `tawasuli18ns.write` |
+
+### Wellbeing
+
+| Resource | Title | Methods | Read scope | Write scope |
+|----------|-------|---------|------------|-------------|
+| `alert-levels` | Alert Levels | GET,POST,PATCH,PUT,DELETE | `wellbeing.read` | `wellbeing.write` |
+| `attendance` | Attendance | GET,POST,PATCH,PUT,DELETE | `attendance.read` | `attendance.write` |
+| `attendance-class-logs` | Class Attendance Logs | GET,POST,PATCH,PUT,DELETE | `attendance.read` | `attendance.write` |
+| `attendance-codes` | Attendance Codes | GET,POST,PATCH,PUT,DELETE | `attendance.read` | `attendance.write` |
+| `attendance-form-group-logs` | Form Group Attendance Logs | GET,POST,PATCH,PUT,DELETE | `attendance.read` | `attendance.write` |
+| `behaviour` | Behaviour Records | GET,POST,PATCH,PUT,DELETE | `behaviour.read` | `behaviour.write` |
+| `behaviour-letters` | Behaviour Letters | GET,POST,PATCH,PUT,DELETE | `behaviour.read` | `behaviour.write` |
+| `first-aid` | First Aid Records | GET,POST,PATCH,PUT,DELETE | `firstaid.read` | `firstaid.write` |
+| `individual-needs` | Individual Needs | GET,POST,PATCH,PUT,DELETE | `individualneeds.read` | `individualneeds.write` |
+| `individual-needs-descriptors` | Individual Needs Descriptors | GET,POST,PATCH,PUT,DELETE | `individualneeds.read` | `individualneeds.write` |
+| `medical` | Medical Records | GET,POST,PATCH,PUT,DELETE | `medical.read` | `medical.write` |
+| `medical-conditions` | Medical Conditions | GET,POST,PATCH,PUT,DELETE | `medical.read` | `medical.write` |
+
+---
+
+## Scopes
+
+Credentials carry a set of scopes. `*` grants everything; otherwise each
+resource lists `read` and (optionally) `write`:
+
+| Scope | Description |
+|------|-------------|
+| `*` | Full access to every endpoint |
+| `activities.read` | Read Activity Students |
+| `activities.write` | Create, update and delete Activity Students |
+| `analytics.read` | Read Analytics Cache |
+| `analytics.write` | Create, update and delete Analytics Cache |
+| `apilogs.read` | Read API Request Log |
+| `apilogs.write` | Create, update and delete API Request Log |
+| `attendance.read` | Read Form Group Attendance Logs |
+| `attendance.write` | Create, update and delete Form Group Attendance Logs |
+| `badges.read` | Read Badges |
+| `badges.write` | Create, update and delete Badges |
+| `behaviour.read` | Read Behaviour Letters |
+| `behaviour.write` | Create, update and delete Behaviour Letters |
+| `bulkjobs.read` | Read Bulk Jobs |
+| `bulkjobs.write` | Create, update and delete Bulk Jobs |
+| `calendar.read` | Read Calendars |
+| `calendar.write` | Create, update and delete Calendars |
+| `classes.read` | Read Classes |
+| `classes.write` | Create, update and delete Classes |
+| `clinics.read` | Read Clinics |
+| `clinics.write` | Create, update and delete Clinics |
+| `courses.read` | Read Courses |
+| `courses.write` | Create, update and delete Courses |
+| `curriculum.read` | Read Rubrics |
+| `curriculum.write` | Create, update and delete Rubrics |
+| `departments.read` | Read Departments |
+| `departments.write` | Create, update and delete Departments |
+| `documents.read` | Read Personal Documents |
+| `documents.write` | Create, update and delete Personal Documents |
+| `enrolments.read` | Read Class Enrolments |
+| `enrolments.write` | Create, update and delete Class Enrolments |
+| `families.read` | Read Family Children |
+| `families.write` | Create, update and delete Family Children |
+| `finance.read` | Read Invoices |
+| `finance.write` | Create, update and delete Invoices |
+| `firstaid.read` | Read First Aid Records |
+| `firstaid.write` | Create, update and delete First Aid Records |
+| `forms.read` | Read Forms |
+| `forms.write` | Create, update and delete Forms |
+| `freelearning.read` | Read Free Learning Units |
+| `freelearning.write` | Create, update and delete Free Learning Units |
+| `housepoints.read` | Read Student House Points |
+| `housepoints.write` | Create, update and delete Student House Points |
+| `individualneeds.read` | Read Individual Needs Descriptors |
+| `individualneeds.write` | Create, update and delete Individual Needs Descriptors |
+| `library.read` | Read Library Items |
+| `library.write` | Create, update and delete Library Items |
+| `markbook.read` | Read Markbook Entries |
+| `markbook.write` | Create, update and delete Markbook Entries |
+| `medical.read` | Read Medical Conditions |
+| `medical.write` | Create, update and delete Medical Conditions |
+| `messaging.read` | Read Scheduled Messages |
+| `messaging.write` | Create, update and delete Scheduled Messages |
+| `messenger.read` | Read Messages |
+| `messenger.write` | Create, update and delete Messages |
+| `notifications.read` | Read Notifications |
+| `notifications.write` | Create, update and delete Notifications |
+| `pd.read` | Read Professional Development Requests |
+| `pd.write` | Create, update and delete Professional Development Requests |
+| `planner.read` | Read Lessons |
+| `planner.write` | Create, update and delete Lessons |
+| `rest api-rest-api-keys.read` | Read Rest api rest api keys |
+| `rest api-rest-api-keys.write` | Create, update and delete Rest api rest api keys |
+| `rest api-rest-api-tokens.read` | Read Rest api rest api tokens |
+| `rest api-rest-api-tokens.write` | Create, update and delete Rest api rest api tokens |
+| `rest api-rest-api-webhook-deliveries.read` | Read Rest api rest api webhook deliveries |
+| `rest api-rest-api-webhooks.read` | Read Rest api rest api webhooks |
+| `rest api-rest-api-webhooks.write` | Create, update and delete Rest api rest api webhooks |
+| `roles.read` | Read Roles |
+| `roles.write` | Create, update and delete Roles |
+| `school.read` | Read Year Groups |
+| `school.write` | Create, update and delete Year Groups |
+| `staff.absence.read` | Read Staff Coverage |
+| `staff.absence.write` | Create, update and delete Staff Coverage |
+| `staff.contracts.read` | Read Staff Contracts |
+| `staff.contracts.write` | Create, update and delete Staff Contracts |
+| `staff.duties.read` | Read Staff Duties |
+| `staff.duties.write` | Create, update and delete Staff Duties |
+| `staff.read` | Read Staff |
+| `staff.write` | Create, update and delete Staff |
+| `stream.read` | Read Stream Posts |
+| `stream.write` | Create, update and delete Stream Posts |
+| `students.read` | Read Students |
+| `students.write` | Create, update and delete Students |
+| `system.read` | Read Settings |
+| `system.write` | Create, update and delete Settings |
+| `tawasul os branches-tawasul-branches.read` | Read Tawasul os branches tawasul branches |
+| `tawasul os branches-tawasul-branches.write` | Create, update and delete Tawasul os branches tawasul branches |
+| `tawasul os tools-tawasul-announcement-recipients.read` | Read Tawasul os tools tawasul announcement recipients |
+| `tawasul os tools-tawasul-announcement-recipients.write` | Create, update and delete Tawasul os tools tawasul announcement recipients |
+| `tawasul os tools-tawasul-announcements.read` | Read Tawasul os tools tawasul announcements |
+| `tawasul os tools-tawasul-announcements.write` | Create, update and delete Tawasul os tools tawasul announcements |
+| `tawasul-activity-attendances.read` | Read Tawasul activity attendances |
+| `tawasul-activity-attendances.write` | Create, update and delete Tawasul activity attendances |
+| `tawasul-activity-categories.read` | Read Tawasul activity categories |
+| `tawasul-activity-categories.write` | Create, update and delete Tawasul activity categories |
+| `tawasul-activity-choices.read` | Read Tawasul activity choices |
+| `tawasul-activity-choices.write` | Create, update and delete Tawasul activity choices |
+| `tawasul-activity-photos.read` | Read Tawasul activity photos |
+| `tawasul-activity-photos.write` | Create, update and delete Tawasul activity photos |
+| `tawasul-activity-slots.read` | Read Tawasul activity slots |
+| `tawasul-activity-slots.write` | Create, update and delete Tawasul activity slots |
+| `tawasul-activity-types.read` | Read Tawasul activity types |
+| `tawasul-activity-types.write` | Create, update and delete Tawasul activity types |
+| `tawasul-admissions-accounts.read` | Read Tawasul admissions accounts |
+| `tawasul-admissions-accounts.write` | Create, update and delete Tawasul admissions accounts |
+| `tawasul-admissions-applications.read` | Read Tawasul admissions applications |
+| `tawasul-admissions-applications.write` | Create, update and delete Tawasul admissions applications |
+| `tawasul-alarm-confirms.read` | Read Tawasul alarm confirms |
+| `tawasul-alarm-confirms.write` | Create, update and delete Tawasul alarm confirms |
+| `tawasul-alarms.read` | Read Tawasul alarms |
+| `tawasul-alarms.write` | Create, update and delete Tawasul alarms |
+| `tawasul-alert-types.read` | Read Tawasul alert types |
+| `tawasul-alert-types.write` | Create, update and delete Tawasul alert types |
+| `tawasul-alerts.read` | Read Tawasul alerts |
+| `tawasul-alerts.write` | Create, update and delete Tawasul alerts |
+| `tawasul-application-form-files.read` | Read Tawasul application form files |
+| `tawasul-application-form-files.write` | Create, update and delete Tawasul application form files |
+| `tawasul-application-form-links.read` | Read Tawasul application form links |
+| `tawasul-application-form-links.write` | Create, update and delete Tawasul application form links |
+| `tawasul-application-form-relationships.read` | Read Tawasul application form relationships |
+| `tawasul-application-form-relationships.write` | Create, update and delete Tawasul application form relationships |
+| `tawasul-application-forms.read` | Read Tawasul application forms |
+| `tawasul-application-forms.write` | Create, update and delete Tawasul application forms |
+| `tawasul-behaviour-follow-ups.read` | Read Tawasul behaviour follow ups |
+| `tawasul-behaviour-follow-ups.write` | Create, update and delete Tawasul behaviour follow ups |
+| `tawasul-calendar-editors.read` | Read Tawasul calendar editors |
+| `tawasul-calendar-editors.write` | Create, update and delete Tawasul calendar editors |
+| `tawasul-calendar-event-persons.read` | Read Tawasul calendar event persons |
+| `tawasul-calendar-event-persons.write` | Create, update and delete Tawasul calendar event persons |
+| `tawasul-calendar-event-types.read` | Read Tawasul calendar event types |
+| `tawasul-calendar-event-types.write` | Create, update and delete Tawasul calendar event types |
+| `tawasul-core-tos-api-keys.read` | Read Tawasul core tos api keys |
+| `tawasul-core-tos-api-keys.write` | Create, update and delete Tawasul core tos api keys |
+| `tawasul-core-tos-api-logs.read` | Read Tawasul core tos api logs |
+| `tawasul-core-tos-api-tokens.read` | Read Tawasul core tos api tokens |
+| `tawasul-core-tos-api-tokens.write` | Create, update and delete Tawasul core tos api tokens |
+| `tawasul-core-tos-api-webhook-deliveries.read` | Read Tawasul core tos api webhook deliveries |
+| `tawasul-core-tos-api-webhooks.read` | Read Tawasul core tos api webhooks |
+| `tawasul-core-tos-api-webhooks.write` | Create, update and delete Tawasul core tos api webhooks |
+| `tawasul-countries.read` | Read Tawasul countries |
+| `tawasul-countries.write` | Create, update and delete Tawasul countries |
+| `tawasul-course-class-maps.read` | Read Tawasul course class maps |
+| `tawasul-course-class-maps.write` | Create, update and delete Tawasul course class maps |
+| `tawasul-crowd-assess-discusses.read` | Read Tawasul crowd assess discusses |
+| `tawasul-crowd-assess-discusses.write` | Create, update and delete Tawasul crowd assess discusses |
+| `tawasul-data-retentions.read` | Read Tawasul data retentions |
+| `tawasul-data-retentions.write` | Create, update and delete Tawasul data retentions |
+| `tawasul-days-of-weeks.read` | Read Tawasul days of weeks |
+| `tawasul-days-of-weeks.write` | Create, update and delete Tawasul days of weeks |
+| `tawasul-department-resources.read` | Read Tawasul department resources |
+| `tawasul-department-resources.write` | Create, update and delete Tawasul department resources |
+| `tawasul-discussions.read` | Read Tawasul discussions |
+| `tawasul-discussions.write` | Create, update and delete Tawasul discussions |
+| `tawasul-districts.read` | Read Tawasul districts |
+| `tawasul-districts.write` | Create, update and delete Tawasul districts |
+| `tawasul-email-templates.read` | Read Tawasul email templates |
+| `tawasul-email-templates.write` | Create, update and delete Tawasul email templates |
+| `tawasul-external-assessment-fields.read` | Read Tawasul external assessment fields |
+| `tawasul-external-assessment-fields.write` | Create, update and delete Tawasul external assessment fields |
+| `tawasul-external-assessment-student-entries.read` | Read Tawasul external assessment student entries |
+| `tawasul-external-assessment-student-entries.write` | Create, update and delete Tawasul external assessment student entries |
+| `tawasul-external-assessment-students.read` | Read Tawasul external assessment students |
+| `tawasul-external-assessment-students.write` | Create, update and delete Tawasul external assessment students |
+| `tawasul-external-assessments.read` | Read Tawasul external assessments |
+| `tawasul-external-assessments.write` | Create, update and delete Tawasul external assessments |
+| `tawasul-family-relationships.read` | Read Tawasul family relationships |
+| `tawasul-family-relationships.write` | Create, update and delete Tawasul family relationships |
+| `tawasul-family-updates.read` | Read Tawasul family updates |
+| `tawasul-family-updates.write` | Create, update and delete Tawasul family updates |
+| `tawasul-file-extensions.read` | Read Tawasul file extensions |
+| `tawasul-file-extensions.write` | Create, update and delete Tawasul file extensions |
+| `tawasul-finance-accounts.read` | Read Tawasul finance accounts |
+| `tawasul-finance-accounts.write` | Create, update and delete Tawasul finance accounts |
+| `tawasul-finance-assets.read` | Read Tawasul finance assets |
+| `tawasul-finance-assets.write` | Create, update and delete Tawasul finance assets |
+| `tawasul-finance-audit-logs.read` | Read Tawasul finance audit logs |
+| `tawasul-finance-bank-reconciliations.read` | Read Tawasul finance bank reconciliations |
+| `tawasul-finance-bank-reconciliations.write` | Create, update and delete Tawasul finance bank reconciliations |
+| `tawasul-finance-billing-schedules-2.read` | Read Tawasul finance billing schedules 2 |
+| `tawasul-finance-billing-schedules-2.write` | Create, update and delete Tawasul finance billing schedules 2 |
+| `tawasul-finance-billing-schedules.read` | Read Tawasul finance billing schedules |
+| `tawasul-finance-billing-schedules.write` | Create, update and delete Tawasul finance billing schedules |
+| `tawasul-finance-budget-cycle-allocations-2.read` | Read Tawasul finance budget cycle allocations 2 |
+| `tawasul-finance-budget-cycle-allocations-2.write` | Create, update and delete Tawasul finance budget cycle allocations 2 |
+| `tawasul-finance-budget-cycle-allocations.read` | Read Tawasul finance budget cycle allocations |
+| `tawasul-finance-budget-cycle-allocations.write` | Create, update and delete Tawasul finance budget cycle allocations |
+| `tawasul-finance-budget-cycles-2.read` | Read Tawasul finance budget cycles 2 |
+| `tawasul-finance-budget-cycles-2.write` | Create, update and delete Tawasul finance budget cycles 2 |
+| `tawasul-finance-budget-cycles.read` | Read Tawasul finance budget cycles |
+| `tawasul-finance-budget-cycles.write` | Create, update and delete Tawasul finance budget cycles |
+| `tawasul-finance-budget-persons-2.read` | Read Tawasul finance budget persons 2 |
+| `tawasul-finance-budget-persons-2.write` | Create, update and delete Tawasul finance budget persons 2 |
+| `tawasul-finance-budget-persons.read` | Read Tawasul finance budget persons |
+| `tawasul-finance-budget-persons.write` | Create, update and delete Tawasul finance budget persons |
+| `tawasul-finance-cash-accounts.read` | Read Tawasul finance cash accounts |
+| `tawasul-finance-cash-accounts.write` | Create, update and delete Tawasul finance cash accounts |
+| `tawasul-finance-cost-centers.read` | Read Tawasul finance cost centers |
+| `tawasul-finance-cost-centers.write` | Create, update and delete Tawasul finance cost centers |
+| `tawasul-finance-depreciations.read` | Read Tawasul finance depreciations |
+| `tawasul-finance-depreciations.write` | Create, update and delete Tawasul finance depreciations |
+| `tawasul-finance-discounts.read` | Read Tawasul finance discounts |
+| `tawasul-finance-discounts.write` | Create, update and delete Tawasul finance discounts |
+| `tawasul-finance-expense-approvers-2.read` | Read Tawasul finance expense approvers 2 |
+| `tawasul-finance-expense-approvers-2.write` | Create, update and delete Tawasul finance expense approvers 2 |
+| `tawasul-finance-expense-approvers.read` | Read Tawasul finance expense approvers |
+| `tawasul-finance-expense-approvers.write` | Create, update and delete Tawasul finance expense approvers |
+| `tawasul-finance-expense-logs-2.read` | Read Tawasul finance expense logs 2 |
+| `tawasul-finance-expense-logs.read` | Read Tawasul finance expense logs |
+| `tawasul-finance-fee-categories-2.read` | Read Tawasul finance fee categories 2 |
+| `tawasul-finance-fee-categories-2.write` | Create, update and delete Tawasul finance fee categories 2 |
+| `tawasul-finance-fee-categories.read` | Read Tawasul finance fee categories |
+| `tawasul-finance-fee-categories.write` | Create, update and delete Tawasul finance fee categories |
+| `tawasul-finance-fee-items.read` | Read Tawasul finance fee items |
+| `tawasul-finance-fee-items.write` | Create, update and delete Tawasul finance fee items |
+| `tawasul-finance-fee-plan-items.read` | Read Tawasul finance fee plan items |
+| `tawasul-finance-fee-plan-items.write` | Create, update and delete Tawasul finance fee plan items |
+| `tawasul-finance-fee-plans.read` | Read Tawasul finance fee plans |
+| `tawasul-finance-fee-plans.write` | Create, update and delete Tawasul finance fee plans |
+| `tawasul-finance-fiscal-years.read` | Read Tawasul finance fiscal years |
+| `tawasul-finance-fiscal-years.write` | Create, update and delete Tawasul finance fiscal years |
+| `tawasul-finance-invoicee-updates-2.read` | Read Tawasul finance invoicee updates 2 |
+| `tawasul-finance-invoicee-updates-2.write` | Create, update and delete Tawasul finance invoicee updates 2 |
+| `tawasul-finance-invoicee-updates.read` | Read Tawasul finance invoicee updates |
+| `tawasul-finance-invoicee-updates.write` | Create, update and delete Tawasul finance invoicee updates |
+| `tawasul-finance-invoicees-2.read` | Read Tawasul finance invoicees 2 |
+| `tawasul-finance-invoicees-2.write` | Create, update and delete Tawasul finance invoicees 2 |
+| `tawasul-finance-invoicees.read` | Read Tawasul finance invoicees |
+| `tawasul-finance-invoicees.write` | Create, update and delete Tawasul finance invoicees |
+| `tawasul-finance-journal-entries.read` | Read Tawasul finance journal entries |
+| `tawasul-finance-journal-entries.write` | Create, update and delete Tawasul finance journal entries |
+| `tawasul-finance-journal-lines.read` | Read Tawasul finance journal lines |
+| `tawasul-finance-journal-lines.write` | Create, update and delete Tawasul finance journal lines |
+| `tawasul-finance-payment-vouchers.read` | Read Tawasul finance payment vouchers |
+| `tawasul-finance-payment-vouchers.write` | Create, update and delete Tawasul finance payment vouchers |
+| `tawasul-finance-payroll-lines.read` | Read Tawasul finance payroll lines |
+| `tawasul-finance-payroll-lines.write` | Create, update and delete Tawasul finance payroll lines |
+| `tawasul-finance-payroll-runs.read` | Read Tawasul finance payroll runs |
+| `tawasul-finance-payroll-runs.write` | Create, update and delete Tawasul finance payroll runs |
+| `tawasul-finance-periods.read` | Read Tawasul finance periods |
+| `tawasul-finance-periods.write` | Create, update and delete Tawasul finance periods |
+| `tawasul-finance-petty-cashes-2.read` | Read Tawasul finance petty cashes 2 |
+| `tawasul-finance-petty-cashes-2.write` | Create, update and delete Tawasul finance petty cashes 2 |
+| `tawasul-finance-petty-cashes.read` | Read Tawasul finance petty cashes |
+| `tawasul-finance-petty-cashes.write` | Create, update and delete Tawasul finance petty cashes |
+| `tawasul-finance-purchase-bills.read` | Read Tawasul finance purchase bills |
+| `tawasul-finance-purchase-bills.write` | Create, update and delete Tawasul finance purchase bills |
+| `tawasul-finance-receipts.read` | Read Tawasul finance receipts |
+| `tawasul-finance-receipts.write` | Create, update and delete Tawasul finance receipts |
+| `tawasul-finance-salary-components.read` | Read Tawasul finance salary components |
+| `tawasul-finance-salary-components.write` | Create, update and delete Tawasul finance salary components |
+| `tawasul-finance-sequences.read` | Read Tawasul finance sequences |
+| `tawasul-finance-sequences.write` | Create, update and delete Tawasul finance sequences |
+| `tawasul-finance-staff-salaries.read` | Read Tawasul finance staff salaries |
+| `tawasul-finance-staff-salaries.write` | Create, update and delete Tawasul finance staff salaries |
+| `tawasul-finance-student-discounts.read` | Read Tawasul finance student discounts |
+| `tawasul-finance-student-discounts.write` | Create, update and delete Tawasul finance student discounts |
+| `tawasul-finance-suppliers.read` | Read Tawasul finance suppliers |
+| `tawasul-finance-suppliers.write` | Create, update and delete Tawasul finance suppliers |
+| `tawasul-finance-transfers.read` | Read Tawasul finance transfers |
+| `tawasul-finance-transfers.write` | Create, update and delete Tawasul finance transfers |
+| `tawasul-first-aid-follow-ups.read` | Read Tawasul first aid follow ups |
+| `tawasul-first-aid-follow-ups.write` | Create, update and delete Tawasul first aid follow ups |
+| `tawasul-form-fields.read` | Read Tawasul form fields |
+| `tawasul-form-fields.write` | Create, update and delete Tawasul form fields |
+| `tawasul-form-pages.read` | Read Tawasul form pages |
+| `tawasul-form-pages.write` | Create, update and delete Tawasul form pages |
+| `tawasul-form-uploads.read` | Read Tawasul form uploads |
+| `tawasul-form-uploads.write` | Create, update and delete Tawasul form uploads |
+| `tawasul-group-persons.read` | Read Tawasul group persons |
+| `tawasul-group-persons.write` | Create, update and delete Tawasul group persons |
+| `tawasul-groups.read` | Read Tawasul groups |
+| `tawasul-groups.write` | Create, update and delete Tawasul groups |
+| `tawasul-hooks.read` | Read Tawasul hooks |
+| `tawasul-hooks.write` | Create, update and delete Tawasul hooks |
+| `tawasul-in-archives.read` | Read Tawasul in archives |
+| `tawasul-in-assistants.read` | Read Tawasul in assistants |
+| `tawasul-in-assistants.write` | Create, update and delete Tawasul in assistants |
+| `tawasul-in-descriptors.read` | Read Tawasul in descriptors |
+| `tawasul-in-descriptors.write` | Create, update and delete Tawasul in descriptors |
+| `tawasul-in-investigation-contributions.read` | Read Tawasul in investigation contributions |
+| `tawasul-in-investigation-contributions.write` | Create, update and delete Tawasul in investigation contributions |
+| `tawasul-in-investigations.read` | Read Tawasul in investigations |
+| `tawasul-in-investigations.write` | Create, update and delete Tawasul in investigations |
+| `tawasul-internal-assessment-columns.read` | Read Tawasul internal assessment columns |
+| `tawasul-internal-assessment-columns.write` | Create, update and delete Tawasul internal assessment columns |
+| `tawasul-internal-assessment-entries.read` | Read Tawasul internal assessment entries |
+| `tawasul-internal-assessment-entries.write` | Create, update and delete Tawasul internal assessment entries |
+| `tawasul-languages.read` | Read Tawasul languages |
+| `tawasul-languages.write` | Create, update and delete Tawasul languages |
+| `tawasul-library-shelf-items.read` | Read Tawasul library shelf items |
+| `tawasul-library-shelf-items.write` | Create, update and delete Tawasul library shelf items |
+| `tawasul-library-shelfs.read` | Read Tawasul library shelfs |
+| `tawasul-library-shelfs.write` | Create, update and delete Tawasul library shelfs |
+| `tawasul-library-types.read` | Read Tawasul library types |
+| `tawasul-library-types.write` | Create, update and delete Tawasul library types |
+| `tawasul-logs.read` | Read Tawasul logs |
+| `tawasul-markbook-targets.read` | Read Tawasul markbook targets |
+| `tawasul-markbook-targets.write` | Create, update and delete Tawasul markbook targets |
+| `tawasul-markbook-weights.read` | Read Tawasul markbook weights |
+| `tawasul-markbook-weights.write` | Create, update and delete Tawasul markbook weights |
+| `tawasul-medical-conditions.read` | Read Tawasul medical conditions |
+| `tawasul-medical-conditions.write` | Create, update and delete Tawasul medical conditions |
+| `tawasul-messenger-canned-responses.read` | Read Tawasul messenger canned responses |
+| `tawasul-messenger-canned-responses.write` | Create, update and delete Tawasul messenger canned responses |
+| `tawasul-messenger-mailing-list-recipients.read` | Read Tawasul messenger mailing list recipients |
+| `tawasul-messenger-mailing-list-recipients.write` | Create, update and delete Tawasul messenger mailing list recipients |
+| `tawasul-messenger-mailing-lists.read` | Read Tawasul messenger mailing lists |
+| `tawasul-messenger-mailing-lists.write` | Create, update and delete Tawasul messenger mailing lists |
+| `tawasul-messenger-targets.read` | Read Tawasul messenger targets |
+| `tawasul-messenger-targets.write` | Create, update and delete Tawasul messenger targets |
+| `tawasul-migrations.read` | Read Tawasul migrations |
+| `tawasul-payments.read` | Read Tawasul payments |
+| `tawasul-payments.write` | Create, update and delete Tawasul payments |
+| `tawasul-person-medical-condition-updates.read` | Read Tawasul person medical condition updates |
+| `tawasul-person-medical-condition-updates.write` | Create, update and delete Tawasul person medical condition updates |
+| `tawasul-person-medical-updates.read` | Read Tawasul person medical updates |
+| `tawasul-person-medical-updates.write` | Create, update and delete Tawasul person medical updates |
+| `tawasul-person-photos.read` | Read Tawasul person photos |
+| `tawasul-person-photos.write` | Create, update and delete Tawasul person photos |
+| `tawasul-person-resets.read` | Read Tawasul person resets |
+| `tawasul-person-resets.write` | Create, update and delete Tawasul person resets |
+| `tawasul-person-status-logs.read` | Read Tawasul person status logs |
+| `tawasul-person-updates.read` | Read Tawasul person updates |
+| `tawasul-person-updates.write` | Create, update and delete Tawasul person updates |
+| `tawasul-personal-document-types.read` | Read Tawasul personal document types |
+| `tawasul-personal-document-types.write` | Create, update and delete Tawasul personal document types |
+| `tawasul-planner-entry-discusses.read` | Read Tawasul planner entry discusses |
+| `tawasul-planner-entry-discusses.write` | Create, update and delete Tawasul planner entry discusses |
+| `tawasul-planner-entry-guests.read` | Read Tawasul planner entry guests |
+| `tawasul-planner-entry-guests.write` | Create, update and delete Tawasul planner entry guests |
+| `tawasul-planner-entry-homeworks.read` | Read Tawasul planner entry homeworks |
+| `tawasul-planner-entry-homeworks.write` | Create, update and delete Tawasul planner entry homeworks |
+| `tawasul-planner-entry-outcomes.read` | Read Tawasul planner entry outcomes |
+| `tawasul-planner-entry-outcomes.write` | Create, update and delete Tawasul planner entry outcomes |
+| `tawasul-planner-entry-student-homeworks.read` | Read Tawasul planner entry student homeworks |
+| `tawasul-planner-entry-student-homeworks.write` | Create, update and delete Tawasul planner entry student homeworks |
+| `tawasul-planner-entry-student-trackers.read` | Read Tawasul planner entry student trackers |
+| `tawasul-planner-entry-student-trackers.write` | Create, update and delete Tawasul planner entry student trackers |
+| `tawasul-planner-parent-weekly-email-summaries.read` | Read Tawasul planner parent weekly email summaries |
+| `tawasul-planner-parent-weekly-email-summaries.write` | Create, update and delete Tawasul planner parent weekly email summaries |
+| `tawasul-report-archive-entries.read` | Read Tawasul report archive entries |
+| `tawasul-report-archives.read` | Read Tawasul report archives |
+| `tawasul-report-prototype-sections.read` | Read Tawasul report prototype sections |
+| `tawasul-report-prototype-sections.write` | Create, update and delete Tawasul report prototype sections |
+| `tawasul-report-template-fonts.read` | Read Tawasul report template fonts |
+| `tawasul-report-template-fonts.write` | Create, update and delete Tawasul report template fonts |
+| `tawasul-report-template-sections.read` | Read Tawasul report template sections |
+| `tawasul-report-template-sections.write` | Create, update and delete Tawasul report template sections |
+| `tawasul-report-templates.read` | Read Tawasul report templates |
+| `tawasul-report-templates.write` | Create, update and delete Tawasul report templates |
+| `tawasul-reporting-accesses.read` | Read Tawasul reporting accesses |
+| `tawasul-reporting-accesses.write` | Create, update and delete Tawasul reporting accesses |
+| `tawasul-reporting-criteria-types.read` | Read Tawasul reporting criteria types |
+| `tawasul-reporting-criteria-types.write` | Create, update and delete Tawasul reporting criteria types |
+| `tawasul-reporting-criterias.read` | Read Tawasul reporting criterias |
+| `tawasul-reporting-criterias.write` | Create, update and delete Tawasul reporting criterias |
+| `tawasul-reporting-cycles.read` | Read Tawasul reporting cycles |
+| `tawasul-reporting-cycles.write` | Create, update and delete Tawasul reporting cycles |
+| `tawasul-reporting-progresses.read` | Read Tawasul reporting progresses |
+| `tawasul-reporting-progresses.write` | Create, update and delete Tawasul reporting progresses |
+| `tawasul-reporting-proofs.read` | Read Tawasul reporting proofs |
+| `tawasul-reporting-proofs.write` | Create, update and delete Tawasul reporting proofs |
+| `tawasul-reporting-scopes.read` | Read Tawasul reporting scopes |
+| `tawasul-reporting-scopes.write` | Create, update and delete Tawasul reporting scopes |
+| `tawasul-reporting-values.read` | Read Tawasul reporting values |
+| `tawasul-reporting-values.write` | Create, update and delete Tawasul reporting values |
+| `tawasul-reports.read` | Read Tawasul reports |
+| `tawasul-reports.write` | Create, update and delete Tawasul reports |
+| `tawasul-resource-tags.read` | Read Tawasul resource tags |
+| `tawasul-resource-tags.write` | Create, update and delete Tawasul resource tags |
+| `tawasul-resources.read` | Read Tawasul resources |
+| `tawasul-resources.write` | Create, update and delete Tawasul resources |
+| `tawasul-rubric-cells.read` | Read Tawasul rubric cells |
+| `tawasul-rubric-cells.write` | Create, update and delete Tawasul rubric cells |
+| `tawasul-rubric-columns.read` | Read Tawasul rubric columns |
+| `tawasul-rubric-columns.write` | Create, update and delete Tawasul rubric columns |
+| `tawasul-rubric-entries.read` | Read Tawasul rubric entries |
+| `tawasul-rubric-entries.write` | Create, update and delete Tawasul rubric entries |
+| `tawasul-rubric-rows.read` | Read Tawasul rubric rows |
+| `tawasul-rubric-rows.write` | Create, update and delete Tawasul rubric rows |
+| `tawasul-sessions.read` | Read Tawasul sessions |
+| `tawasul-space-persons.read` | Read Tawasul space persons |
+| `tawasul-space-persons.write` | Create, update and delete Tawasul space persons |
+| `tawasul-staff-absence-types.read` | Read Tawasul staff absence types |
+| `tawasul-staff-absence-types.write` | Create, update and delete Tawasul staff absence types |
+| `tawasul-staff-application-form-files.read` | Read Tawasul staff application form files |
+| `tawasul-staff-application-form-files.write` | Create, update and delete Tawasul staff application form files |
+| `tawasul-staff-application-forms.read` | Read Tawasul staff application forms |
+| `tawasul-staff-application-forms.write` | Create, update and delete Tawasul staff application forms |
+| `tawasul-staff-coverage-dates.read` | Read Tawasul staff coverage dates |
+| `tawasul-staff-coverage-dates.write` | Create, update and delete Tawasul staff coverage dates |
+| `tawasul-staff-duty-persons.read` | Read Tawasul staff duty persons |
+| `tawasul-staff-duty-persons.write` | Create, update and delete Tawasul staff duty persons |
+| `tawasul-staff-job-openings.read` | Read Tawasul staff job openings |
+| `tawasul-staff-job-openings.write` | Create, update and delete Tawasul staff job openings |
+| `tawasul-staff-updates.read` | Read Tawasul staff updates |
+| `tawasul-staff-updates.write` | Create, update and delete Tawasul staff updates |
+| `tawasul-strings.read` | Read Tawasul strings |
+| `tawasul-strings.write` | Create, update and delete Tawasul strings |
+| `tawasul-student-note-categories.read` | Read Tawasul student note categories |
+| `tawasul-student-note-categories.write` | Create, update and delete Tawasul student note categories |
+| `tawasul-student-notes.read` | Read Tawasul student notes |
+| `tawasul-student-notes.write` | Create, update and delete Tawasul student notes |
+| `tawasul-substitutes.read` | Read Tawasul substitutes |
+| `tawasul-substitutes.write` | Create, update and delete Tawasul substitutes |
+| `tawasul-themes.read` | Read Tawasul themes |
+| `tawasul-themes.write` | Create, update and delete Tawasul themes |
+| `tawasul-tt-columns.read` | Read Tawasul tt columns |
+| `tawasul-tt-columns.write` | Create, update and delete Tawasul tt columns |
+| `tawasul-tt-day-row-class-exceptions.read` | Read Tawasul tt day row class exceptions |
+| `tawasul-tt-day-row-class-exceptions.write` | Create, update and delete Tawasul tt day row class exceptions |
+| `tawasul-tt-imports.read` | Read Tawasul tt imports |
+| `tawasul-tt-imports.write` | Create, update and delete Tawasul tt imports |
+| `tawasul-tt-space-bookings.read` | Read Tawasul tt space bookings |
+| `tawasul-tt-space-bookings.write` | Create, update and delete Tawasul tt space bookings |
+| `tawasul-tt-space-changes.read` | Read Tawasul tt space changes |
+| `tawasul-tt-space-changes.write` | Create, update and delete Tawasul tt space changes |
+| `tawasul-unit-blocks.read` | Read Tawasul unit blocks |
+| `tawasul-unit-blocks.write` | Create, update and delete Tawasul unit blocks |
+| `tawasul-unit-class-blocks.read` | Read Tawasul unit class blocks |
+| `tawasul-unit-class-blocks.write` | Create, update and delete Tawasul unit class blocks |
+| `tawasul-unit-classes.read` | Read Tawasul unit classes |
+| `tawasul-unit-classes.write` | Create, update and delete Tawasul unit classes |
+| `tawasul-unit-outcomes.read` | Read Tawasul unit outcomes |
+| `tawasul-unit-outcomes.write` | Create, update and delete Tawasul unit outcomes |
+| `tawasul-username-formats.read` | Read Tawasul username formats |
+| `tawasul-username-formats.write` | Create, update and delete Tawasul username formats |
+| `tawasuli18ns.read` | Read Tawasuli18ns |
+| `tawasuli18ns.write` | Create, update and delete Tawasuli18ns |
+| `timetable.read` | Read Timetables |
+| `timetable.write` | Create, update and delete Timetables |
+| `trips.read` | Read Trips |
+| `trips.write` | Create, update and delete Trips |
+| `units.read` | Read Units |
+| `units.write` | Create, update and delete Units |
+| `users.read` | Read Users |
+| `users.write` | Create, update and delete Users |
+| `wellbeing.read` | Read Alert Levels |
+| `wellbeing.write` | Create, update and delete Alert Levels |
+| `workflows.read` | Read Workflow Instances |
+| `workflows.write` | Create, update and delete Workflow Instances |
+
+---
+
+## Meta endpoints
+
+| Endpoint | Auth | Description |
+|----------|------|-------------|
+| `GET /` | — | API index with links |
+| `GET /health` | — | Service health check |
+| `GET /scopes` | — | All scopes an API key can hold |
+| `GET /resources` | — | Every available resource with methods and filters |
+| `GET /events` | — | All webhook event types |
+| `GET /stats` | yes | School-wide counts and API usage |
+| `GET /dashboard` | yes | Current-user dashboard data |
+| `GET /permissions` | yes | Actions the current user can perform |
+| `GET /analytics` | yes | Request analytics and trends (pass `?days=7`) |
+| `GET /openapi.json` | yes | This OpenAPI 3 specification |
+
+---
+
+## HTTP method summary
+
+| Method | Meaning |
+|--------|---------|
+| `GET` | Read a collection or a single record |
+| `POST` | Create a record (or bulk create via `/bulk`) |
+| `PATCH` | Partial update — only the fields sent are changed |
+| `PUT` | Full replace — the entire record is overwritten |
+| `DELETE` | Remove a record |
+| `OPTIONS` | CORS preflight |
+
+---
+
+_Generated from the live resource registry by `modules/Rest API/src/Command/generate-openapi.php`._

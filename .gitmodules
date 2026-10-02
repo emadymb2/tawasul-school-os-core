@@ -1,0 +1,6 @@
+[submodule "i18n"]
+	path = i18n
+	url = https://github.com/TawasulOSEdu/i18n.git
+[submodule "resources/build"]
+	path = resources/build
+	url = https://github.com/TawasulOSEdu/build.git

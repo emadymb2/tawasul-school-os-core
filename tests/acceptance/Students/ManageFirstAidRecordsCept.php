@@ -1,0 +1,51 @@
+<?php
+/**
+ * @covers modules/TawasulStudents/firstAidRecord.php
+ * @covers modules/TawasulStudents/firstAidRecord_add.php
+ * @covers modules/TawasulStudents/firstAidRecord_edit.php
+ * @covers modules/TawasulStudents/firstAidRecord_delete.php
+ * @covers modules/TawasulStudents/firstAidRecord_deleteProcess.php
+ */
+$I = new AcceptanceTester($scenario);
+$I->wantTo('add, edit and delete a first aid record');
+$I->loginAsAdmin();
+$I->amOnModulePage('Students', 'firstAidRecord.php');
+$I->seeBreadcrumb('First Aid Records');
+
+// Add ------------------------------------------------
+$I->clickNavigation('Add');
+$I->seeBreadcrumb('Add');
+
+$I->selectFromDropdown('tawasulPersonID', 1);
+
+$formValues = array(
+    'date' => date('d/m/Y'),
+    'timeIn' => '10:00',
+    'description' => 'Minor cut on finger during class',
+    'actionTaken' => 'Applied bandage and antiseptic',
+);
+
+$I->submitForm('#content form', $formValues, 'Submit');
+$I->seeSuccessMessage();
+
+$tawasulFirstAidID = $I->grabEditIDFromURL();
+
+// Edit ------------------------------------------------
+$I->amOnModulePage('Students', 'firstAidRecord_edit.php', array('tawasulFirstAidID' => $tawasulFirstAidID));
+$I->seeBreadcrumb('Edit');
+
+$I->seeInField('description', 'Minor cut on finger during class');
+
+$editFormValues = array(
+    'timeOut' => '10:30',
+    'followUp' => 'Student returned to class. No further issues reported.',
+);
+
+$I->submitForm('#content form', $editFormValues, 'Submit');
+$I->seeSuccessMessage();
+
+// Delete ------------------------------------------------
+$I->amOnModulePage('Students', 'firstAidRecord_delete.php', array('tawasulFirstAidID' => $tawasulFirstAidID));
+$I->fillField('confirm', 'Delete');
+$I->submitForm('#content form', [], 'Delete');
+$I->seeSuccessMessage();

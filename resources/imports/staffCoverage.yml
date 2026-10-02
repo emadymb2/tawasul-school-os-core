@@ -1,0 +1,121 @@
+details:
+    type: staffCoverage
+    category: Substitute
+    name: Staff Coverage
+    table: tawasulStaffCoverage
+    modes: { update: true, insert: true, export: true }
+access:
+    module: Staff
+    action: Manage Staff Coverage
+fields:
+    tawasulSchoolYearID: 
+        name: "School Year"
+        desc: "School year name, as set in School Admin. Must already exist."
+        args: { filter: schoolyear, required: true, custom: true, readonly: [tawasulStaffAbsenceDate]  }
+        relationship: { table: tawasulSchoolYear, key: tawasulSchoolYearID, field: name  }
+    tawasulPersonID:
+        name: "Teacher"
+        desc: "Username or Email (if unique)"
+        args: { filter: nospaces, required: true, readonly: true }
+        relationship: { table: tawasulPerson, key: tawasulPersonID, field: username|email  }
+    date: 
+        name: "Date"
+        desc: "Must be unique. Format: YYYY-MM-DD"
+        args: { filter: date, required: true, readonly: [tawasulStaffCoverage] }
+    allDay:
+        name: "All Day"
+        desc: ""
+        args: { filter: yesno, custom: true, required: true, readonly: [tawasulStaffCoverage] }
+    timeStart:
+        name: "Start Time"
+        desc: "Format: hh:mm (24hr)"
+        args: { filter: time, custom: true }
+    timeEnd:
+        name: "End Time"
+        desc: "Format: hh:mm (24hr)"
+        args: { filter: time, custom: true }
+    status:
+        name: "Status"
+        desc: ""
+        value: "Accepted"
+        args: { filter: string, hidden: true }
+    requestType:
+        name: "Request Type"
+        desc: ""
+        value: "Individual"
+        args: { filter: string, hidden: true }
+
+    tawasulPersonIDCoverage:
+        name: "Substitute"
+        desc: "Username or Email (if unique)"
+        args: { filter: nospaces, required: true, readonly: [tawasulStaffAbsenceDate] }
+        relationship: { table: tawasulPerson, key: tawasulPersonID, field: username|email  }
+
+    tawasulPersonIDStatus:
+        name: "Created By"
+        desc: "Username or Email (if unique)"
+        args: { filter: nospaces, required: true, linked: tawasulPersonID, readonly: [tawasulStaffAbsenceDate] }
+    notesStatus:
+        name: "Notes"
+        desc: ""
+        args: { filter: string, custom: true }
+    timestampStatus:
+        name: "Created On"
+        desc: ""
+        args: { filter: timestamp, custom: true }
+    timestampCoverage:
+        name: "Substitute Timestamp"
+        desc: ""
+        args: { filter: timestamp, linked: timestampStatus }
+
+    tawasulStaffAbsenceID:
+        name: "Absence ID"
+        desc: ""
+        args: { filter: string, linked: date }
+        relationship: { table: tawasulStaffAbsenceDate, key: tawasulStaffAbsenceID, join: tawasulStaffAbsence, on: [tawasulStaffAbsenceID, tawasulStaffAbsenceID], field: [ date, allDay, tawasulPersonID, tawasulSchoolYearID ]  }
+    tawasulStaffCoverageID:
+        name: "Coverage ID"
+        desc: ""
+        args: { filter: string, linked: notesCoverage, readonly: [tawasulStaffCoverage] }
+        relationship: { table: tawasulStaffCoverage, key: tawasulStaffCoverageID, field: [ notesCoverage, tawasulPersonIDStatus, tawasulSchoolYearID ]  }
+    notesCoverage:
+        name: "Unique ID"
+        desc: ""
+        args: { filter: string, custom: true, readonly: [tawasulStaffAbsenceDate] }
+tables:
+    tawasulStaffCoverage: 
+        primaryKey:
+            tawasulStaffCoverageID
+        uniqueKeys:
+            - [ notesCoverage, tawasulPersonIDStatus, tawasulSchoolYearID ]
+        fields:
+            - tawasulSchoolYearID
+            - tawasulPersonID
+            - date
+            - allDay
+            - tawasulStaffAbsenceID
+            - status
+            - requestType
+            - tawasulPersonIDStatus
+            - timestampStatus
+            - notesStatus
+            - tawasulPersonIDCoverage
+            - timestampCoverage
+            - notesCoverage
+    tawasulStaffAbsenceDate: 
+        primaryKey:
+            tawasulStaffAbsenceDateID
+        uniqueKeys:
+            - [ tawasulStaffCoverageID, date ]
+            - [ tawasulStaffAbsenceID, date ]
+        fields:
+            - tawasulStaffCoverageID
+            - tawasulStaffAbsenceID
+            - date
+            - allDay
+            - timeStart
+            - timeEnd
+            - tawasulPersonIDStatus
+            - tawasulSchoolYearID
+            - tawasulPersonID
+            - notesCoverage

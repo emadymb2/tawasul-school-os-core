@@ -1,0 +1,32 @@
+parameters:
+	level: 0
+	paths:
+		- src
+	ignoreErrors:
+		- '#Unsafe usage of new static\(\)#'
+	scanFiles:
+		- functions.php
+		- modules/TawasulActivities/moduleFunctions.php
+		- modules/TawasulAttendance/moduleFunctions.php
+		- modules/TawasulBehaviour/moduleFunctions.php
+		- modules/TawasulCrowdAssessment/moduleFunctions.php
+		- modules/TawasulDataUpdater/moduleFunctions.php
+		- modules/TawasulDepartments/moduleFunctions.php
+		- modules/TawasulFinance/moduleFunctions.php
+		- modules/TawasulFormGroups/moduleFunctions.php
+		- modules/TawasulFormalAssessment/moduleFunctions.php
+		- modules/TawasulIndividualNeeds/moduleFunctions.php
+		- modules/TawasulLibrary/moduleFunctions.php
+		- modules/TawasulMarkbook/moduleFunctions.php
+		- modules/TawasulMessenger/moduleFunctions.php
+		- modules/TawasulPlanner/moduleFunctions.php
+		- modules/TawasulReports/moduleFunctions.php
+		- modules/TawasulRubrics/moduleFunctions.php
+		- modules/TawasulSchoolAdmin/moduleFunctions.php
+		- modules/TawasulStaff/moduleFunctions.php
+		- modules/TawasulStudents/moduleFunctions.php
+		- modules/TawasulSystemAdmin/moduleFunctions.php
+		- modules/TawasulTimetableAdmin/moduleFunctions.php
+		- modules/TawasulTimetable/moduleFunctions.php
+		- modules/TawasulTracking/moduleFunctions.php
+		- modules/TawasulUserAdmin/moduleFunctions.php

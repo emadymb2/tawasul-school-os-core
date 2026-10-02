@@ -1,0 +1,116 @@
+/*
+ * Tawasul School OS design system.
+ * Exact CSS matching https://github.com/emadymb1/tawasul-school-os-ui
+ * Cream canvas, deep green ink, gold + coral accents, soft mint/sage tiles.
+ */
+
+:root {
+  --radius: 1rem;
+  --background: oklch(0.958 0.013 88);
+  --foreground: oklch(0.29 0.045 155);
+  --card: oklch(0.995 0.004 90);
+  --card-foreground: oklch(0.29 0.045 155);
+  --popover: oklch(0.995 0.004 90);
+  --popover-foreground: oklch(0.29 0.045 155);
+  --primary: oklch(0.31 0.05 156);
+  --primary-foreground: oklch(0.965 0.014 90);
+  --secondary: oklch(0.93 0.02 92);
+  --secondary-foreground: oklch(0.31 0.05 156);
+  --muted: oklch(0.935 0.015 92);
+  --muted-foreground: oklch(0.52 0.03 155);
+  --accent: oklch(0.91 0.035 120);
+  --accent-foreground: oklch(0.31 0.05 156);
+  --destructive: oklch(0.63 0.175 27);
+  --destructive-foreground: oklch(0.985 0.01 90);
+  --border: oklch(0.9 0.015 92);
+  --input: oklch(0.92 0.015 92);
+  --ring: oklch(0.55 0.08 158);
+  --gold: oklch(0.775 0.115 80);
+  --gold-foreground: oklch(0.29 0.045 155);
+  --coral: oklch(0.63 0.175 27);
+  --coral-foreground: oklch(0.985 0.01 90);
+  --mint: oklch(0.915 0.032 168);
+  --mint-foreground: oklch(0.31 0.05 156);
+  --sage: oklch(0.9 0.045 125);
+  --sage-foreground: oklch(0.31 0.05 156);
+  --leaf: oklch(0.62 0.08 158);
+  --leaf-foreground: oklch(0.985 0.01 90);
+  --chart-1: oklch(0.31 0.05 156);
+  --chart-2: oklch(0.775 0.115 80);
+  --chart-3: oklch(0.63 0.175 27);
+  --chart-4: oklch(0.62 0.08 158);
+  --chart-5: oklch(0.9 0.045 125);
+  --sidebar: oklch(0.275 0.045 156);
+  --sidebar-foreground: oklch(0.955 0.014 90);
+  --sidebar-primary: oklch(0.775 0.115 80);
+  --sidebar-primary-foreground: oklch(0.26 0.045 156);
+  --sidebar-accent: oklch(0.34 0.05 156);
+  --sidebar-accent-foreground: oklch(0.96 0.014 90);
+  --sidebar-border: oklch(0.34 0.045 156);
+  --sidebar-ring: oklch(0.775 0.115 80);
+}
+
+.dark {
+  --background: oklch(0.22 0.03 156);
+  --foreground: oklch(0.96 0.012 90);
+  --card: oklch(0.27 0.035 156);
+  --card-foreground: oklch(0.96 0.012 90);
+  --popover: oklch(0.27 0.035 156);
+  --popover-foreground: oklch(0.96 0.012 90);
+  --primary: oklch(0.775 0.115 80);
+  --primary-foreground: oklch(0.24 0.035 156);
+  --secondary: oklch(0.3 0.035 156);
+  --secondary-foreground: oklch(0.96 0.012 90);
+  --muted: oklch(0.3 0.035 156);
+  --muted-foreground: oklch(0.74 0.02 120);
+  --accent: oklch(0.33 0.04 156);
+  --accent-foreground: oklch(0.96 0.012 90);
+  --destructive: oklch(0.65 0.17 27);
+  --destructive-foreground: oklch(0.985 0.01 90);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 16%);
+  --ring: oklch(0.775 0.115 80);
+  --gold: oklch(0.775 0.115 80);
+  --gold-foreground: oklch(0.24 0.035 156);
+  --coral: oklch(0.65 0.17 27);
+  --coral-foreground: oklch(0.985 0.01 90);
+  --mint: oklch(0.42 0.05 168);
+  --mint-foreground: oklch(0.96 0.012 90);
+  --sage: oklch(0.42 0.05 125);
+  --sage-foreground: oklch(0.96 0.012 90);
+  --leaf: oklch(0.62 0.08 158);
+  --leaf-foreground: oklch(0.985 0.01 90);
+  --sidebar: oklch(0.24 0.035 156);
+  --sidebar-foreground: oklch(0.96 0.012 90);
+  --sidebar-primary: oklch(0.775 0.115 80);
+  --sidebar-primary-foreground: oklch(0.24 0.035 156);
+  --sidebar-accent: oklch(0.31 0.04 156);
+  --sidebar-accent-foreground: oklch(0.96 0.012 90);
+  --sidebar-border: oklch(1 0 0 / 12%);
+  --sidebar-ring: oklch(0.775 0.115 80);
+}
+
+@layer base {
+  * { border-color: var(--color-border); }
+  body {
+    background-color: var(--color-background);
+    color: var(--color-foreground);
+    font-family: var(--font-sans);
+  }
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    letter-spacing: -0.01em;
+  }
+  h1 { font-weight: 800; }
+  table { border-collapse: separate; border-spacing: 0; }
+  th { font-weight: 700; }
+}
+
+/* Soft pill tile used across the portals */
+.tile {
+  border-radius: 1.75rem;
+  padding: 1.25rem;
+}
+
+/* Bottom nav active state */
+.nav-active { background: var(--gold) !important; color: var(--gold-foreground) !important; }

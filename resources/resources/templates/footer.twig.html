@@ -1,0 +1,49 @@
+{#<!--
+Tawasul: the flexible, open school platform
+Owned by Fiksu Tiliratkaisut OY. Developed by Afhaam Technology.
+Copyright © 2024, Fiksu Tiliratkaisut OY
+Tawasul™, Fiksu Tiliratkaisut OY
+
+This is a Tawasul template file, written in HTML and Twig syntax.
+For info about editing, see: https://twig.symfony.com/doc/2.x/
+
+
+Dear theme editors,
+
+Tawasul is an open source project, freely available for you to modify and share. 
+However, it's important to keep the information you see here in the footer intact. 
+This is vital legal information for us to have, as it shows who created Tawasul, 
+and that it is released under the GNU GPL.
+
+Please keep the names and copyrights as they're shown here. You are welcome to 
+edit the style of the text to suit your theme.
+
+Thank you,
+The Tawasul Team
+
+-->#}
+
+<div class="relative text-sm text-gray-700 px-6 lg:px-12 mt-4 pt-4 pb-6 leading-normal border-t border-gray-200 {{ rightToLeft ? 'text-right' : 'text-left' }} bg-white/60 backdrop-blur-lg rounded-lg">
+    <div class="max-w-7xl mx-auto">
+        <div class="flex flex-col md:flex-row justify-between items-center gap-4">
+            <div class="text-center md:text-left">
+                <span class="inline-block font-bold text-lg mb-1">
+                    {{ __('Powered by') }} <a class="text-{{ themeColour }}-700 hover:text-{{ themeColour }}-900 transition-colors font-bold" target='_blank' href='https://tawasul.fi'>Tawasul</a> {{ versionName }}
+                </span> 
+                <div class="text-xs text-gray-500 mt-2 space-y-1">
+                    <p>{{ __('Owned by') }} Fiksu Tiliratkaisut OY | {{ __('Developed by') }} Afhaam Technology</p>
+                    <p>Copyright © <a class="text-{{ themeColour }}-600 hover:text-{{ themeColour }}-800 transition-colors" target='_blank' href='https://tawasul.fi'>Fiksu Tiliratkaisut OY</a> 2024-{{ 'now'|date('Y') }} | Tawasul™ of Fiksu Tiliratkaisut OY</p>
+                </div>
+            </div>
+            <div class="flex flex-wrap justify-center gap-4 text-xs">
+                <a class="text-{{ themeColour }}-600 hover:text-{{ themeColour }}-800 transition-colors" target='_blank' href='https://www.gnu.org/licenses/gpl.html'>{{ __('GNU GPL') }}</a>
+                <a class="text-{{ themeColour }}-600 hover:text-{{ themeColour }}-800 transition-colors" target='_blank' href='https://tawasul.fi/about/#ourTeam'>{{ __('Credits') }}</a>
+                <a class="text-{{ themeColour }}-600 hover:text-{{ themeColour }}-800 transition-colors" target='_blank' href='https://tawasul.fi/about/#translators'>{{ __('Translators') }}</a>
+                <a class="text-{{ themeColour }}-600 hover:text-{{ themeColour }}-800 transition-colors" target='_blank' href='https://tawasul.fi/support/'>{{ __('Support') }}</a>
+            </div>
+        </div>
+        <div class="mt-4 pt-4 border-t border-gray-200 text-center text-xs text-gray-400">
+            {{ footerThemeAuthor }}
+        </div>
+    </div>
+</div>

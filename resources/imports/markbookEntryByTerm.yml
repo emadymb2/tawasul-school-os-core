@@ -1,0 +1,77 @@
+details:
+    type: markbookEntryByTerm
+    name: Markbook Marks by Term
+    table: tawasulMarkbookEntry
+    modes: { update: true, insert: true, export: true }
+access:
+    module: Markbook
+    action: Edit Markbook_everything
+primaryKey:
+    tawasulMarkbookEntryID
+uniqueKeys:
+    - [ tawasulMarkbookColumnID, tawasulPersonIDStudent ]
+table:
+    tawasulSchoolYearID: 
+        name: "School Year"
+        desc: "School year name, as set in School Admin. Must already exist."
+        args: { filter: schoolyear, required: true, custom: true, readonly: true }
+        relationship: { table: tawasulSchoolYear, key: tawasulSchoolYearID, field: name  }
+    tawasulCourseID: 
+        name: "Course"
+        desc: "Short Name"
+        args: { filter: string, required: true, custom: true, readonly: true }
+        relationship: { table: tawasulCourse, key: tawasulCourseID, field: [ nameShort, tawasulSchoolYearID ]  }
+    tawasulCourseClassID: 
+        name: "Class"
+        desc: "Short Name"
+        args: { filter: string, required: true, custom: true, readonly: true }
+        relationship: { table: tawasulCourseClass, key: tawasulCourseClassID, field: [ nameShort, tawasulCourseID ]  }
+    tawasulSchoolYearTermID:
+        name: "Term"
+        desc: "Short Name"
+        args: { filter: string, required: true, custom: true, readonly: true }
+        relationship: { table: tawasulSchoolYearTerm, key: tawasulSchoolYearTermID, field: [ tawasulSchoolYearTerm.nameShort, tawasulSchoolYearID ] }
+    tawasulMarkbookColumnID: 
+        name: "Markbook Column"
+        desc: "Name"
+        args: { filter: string, required: true }
+        relationship: { table: tawasulMarkbookColumn, key: tawasulMarkbookColumnID, field: [ name, tawasulCourseClassID, tawasulSchoolYearTermID ] }
+    tawasulPersonIDStudent: 
+        name: "Student"
+        desc: "Username, Email or Student ID"
+        args: { filter: string, required: true }
+        relationship: { table: tawasulPerson, key: tawasulPersonID, join: tawasulCourseClassPerson, on: [tawasulPersonID, tawasulPersonID], field: [username, tawasulCourseClassID] }
+    attainmentValue: 
+        name: "Attainment Value"
+        desc: ""
+        args: { filter: string, custom: true }
+    attainmentValueRaw: 
+        name: "Attainment Raw Value"
+        desc: ""
+        args: { filter: string, custom: true }
+    attainmentDescriptor: 
+        name: "Attainment Descriptor"
+        desc: ""
+        args: { filter: string, linked: attainmentValue }
+        relationship: { table: tawasulScaleGrade, key: descriptor, join: tawasulMarkbookColumn, on: [tawasulScaleIDAttainment, tawasulScaleID], field: [ value, tawasulMarkbookColumnID ] }
+    attainmentConcern: 
+        name: "Attainment Concern?"
+        desc: ""
+        args: { filter: string, custom: true }
+    effortValue: 
+        name: "Effort Value"
+        desc: ""
+        args: { filter: string, custom: true }
+    effortDescriptor: 
+        name: "Effort Descriptor"
+        desc: ""
+        args: { filter: string, linked: effortValue }
+        relationship: { table: tawasulScaleGrade, key: descriptor, join: tawasulMarkbookColumn, on: [tawasulScaleIDEffort, tawasulScaleID], field: [ value, tawasulMarkbookColumnID ] }
+    effortConcern: 
+        name: "Effort Concern?"
+        desc: ""
+        args: { filter: string, custom: true }
+    comment: 
+        name: "Comment"
+        desc: ""
+        args: { filter: string, custom: true }

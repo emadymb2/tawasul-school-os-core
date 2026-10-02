@@ -1,0 +1,169 @@
+<?php
+/*
+Gibbon: the flexible, open school platform
+Founded by Ross Parker at ICHK Secondary. Built by Ross Parker, Sandra Kuipers and the Gibbon community (https://gibbonedu.org/about/)
+Copyright © 2010, Gibbon Foundation
+Gibbon™, Gibbon Education Ltd. (Hong Kong)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+use TawasulOS\Forms\Form;
+use TawasulOS\Services\Format;
+use TawasulOS\Tables\DataTable;
+use TawasulOS\Forms\Prefab\BulkActionForm;
+use TawasulOS\Domain\System\EmailTemplateGateway;
+use TawasulOS\Domain\Staff\StaffApplicationFormGateway;
+
+if (isActionAccessible($guid, $connection2, '/modules/TawasulStaff/applicationForm_manage.php') == false) {
+    // Access denied
+    $page->addError(__('You do not have access to this action.'));
+} else {
+    //Proceed!
+    $page->breadcrumbs->add(__('Manage Applications'));
+
+    $search = isset($_GET['search'])? $_GET['search'] : '';
+
+    $applicationGateway = $container->get(StaffApplicationFormGateway::class);
+
+    // CRITERIA
+    $criteria = $applicationGateway->newQueryCriteria(true)
+        ->searchBy($applicationGateway->getSearchableColumns(), $search)
+        ->sortBy('tawasulStaffApplicationForm.status')
+        ->sortBy(['priority', 'timestamp'], 'DESC')
+        ->fromPOST();
+
+    echo '<h4>';
+    echo __('Search');
+    echo '</h2>';
+
+    $form = Form::create('action', $session->get('absoluteURL').'/index.php', 'get');
+
+    $form->setClass('noIntBorder w-full');
+
+    $form->addHiddenValue('address', $session->get('address'));
+    $form->addHiddenValue('q', "/modules/".$session->get('module')."/applicationForm_manage.php");
+
+    $row = $form->addRow();
+        $row->addLabel('search', __('Search For'))->description(__('Application ID, preferred, surname'));
+        $row->addTextField('search')->setValue($criteria->getSearchText())->maxLength(20);
+
+    $row = $form->addRow();
+        $row->addFooter();
+        $row->addSearchSubmit($session);
+
+    echo $form->getOutput();
+
+    echo '<h4>';
+    echo __('View');
+    echo '</h2>';
+
+    $applications = $applicationGateway->queryApplications($criteria);
+
+    //BULK ACTION FORM
+    $form = BulkActionForm::create('bulkAction', $session->get('absoluteURL').'/modules/'.$session->get('module').'/applicationForm_manageProcessBulk.php');
+    $form->addHiddenValue('address', $session->get('address'));
+
+    $bulkActions = [
+        'Reject' => __('Reject'),
+    ];
+
+    $templates = $container->get(EmailTemplateGateway::class)->selectTemplatesByModule('Staff', 'Staff Application Form Rejection%')->fetchAll();
+    $templateOptions = [__('Email Templates') => array_combine(array_column($templates, 'templateName'), array_column($templates, 'templateName'))];
+    array_unshift($templateOptions, ['' => __('Do not send email')]);
+
+    $col = $form->createBulkActionColumn($bulkActions);
+        $col->addSelect('templateName')
+            ->fromArray($templateOptions)
+            ->placeholder();
+        $col->addSubmit(__('Go'));
+
+    // DATA TABLE
+    $table = $form->addRow()->addDataTable('applicationsManage', $criteria)->withData($applications);
+
+    $table->modifyRows(function($application, $row) {
+        // Highlight rows based on status
+        if ($application['status'] == 'Accepted') {
+            $row->addClass('current');
+        } else if ($application['status'] == 'Rejected' || $application['status'] == 'Withdrawn') {
+            $row->addClass('error');
+        }
+        return $row;
+    });
+
+    $table->addMetaData('bulkActions', $col);
+
+    // COLUMNS
+    $table->addColumn('tawasulStaffApplicationFormID', __('ID'))
+        ->format(Format::using('number', 'tawasulStaffApplicationFormID'));
+
+    $table->addColumn('person', __('Applicant'))
+        ->description(__('Application Date'))
+        ->sortable(['surname', 'preferredName'])
+        ->format(function($row) {
+            if (!empty($row['tawasulPersonID'])) {
+                $output = Format::name('', $row['preferredName'], $row['surname'], 'Staff', true, true);
+            } else {
+                $output = Format::name('', $row['applicationPreferredName'], $row['applicationSurname'], 'Staff', true, true);
+            }
+            return $output.'<br/><span class="text-xs italic">'.Format::dateTime($row['timestamp']).'</span>';
+        });
+
+    $table->addColumn('jobTitle', __('Position'));
+    
+    $table->addColumn('status', __('Status'))
+        
+        ->description(__('Milestones'))
+        ->format(function($row) {
+            $output = '<strong>'.__($row['status']).'</strong>';
+            if ($row['status'] == 'Pending') {
+                $output .= '<br/><span class="text-xs italic">'.trim(str_replace(',', '<br/>', $row['milestones'])).'</span>';
+            }
+            return $output;
+        });
+
+    $table->addColumn('priority', __('Priority'));
+
+    // ACTIONS
+    $table->addActionColumn()
+        ->addParam('tawasulStaffApplicationFormID')
+        ->addParam('search', $criteria->getSearchText(true))
+        ->format(function ($row, $actions) {
+            if ($row['status'] == 'Pending' || $row['status'] == 'Waiting List') {
+                $actions->addAction('accept', __('Accept'))
+                        ->setIcon('iconTick')
+                        ->setURL('/modules/TawasulStaff/applicationForm_manage_accept.php');
+
+                $actions->addAction('reject', __('Reject'))
+                        ->setIcon('iconCross')
+                        ->append('<br/>')
+                        ->setURL('/modules/TawasulStaff/applicationForm_manage_reject.php');
+            }
+
+            $actions->addAction('edit', __('Edit'))
+                    ->setURL('/modules/TawasulStaff/applicationForm_manage_edit.php');
+
+            $actions->addAction('delete', __('Delete'))
+                    ->setURL('/modules/TawasulStaff/applicationForm_manage_delete.php');
+        });
+
+    $table->addCheckboxColumn('identifiers', 'tawasulStaffApplicationFormID')
+        ->format(function ($application) {
+            if ($application['status'] == 'Rejected') {
+                return Format::small(__(''));
+            }
+        });
+
+    echo $form->getOutput();
+}

@@ -1,0 +1,22 @@
+{
+    "generated": "2026-09-30T13:09:02Z",
+    "coreTables": 8,
+    "coveredTables": 385,
+    "moduleTablesCovered": 231,
+    "missingTables": [
+        "tawasulIN",
+        "tawasulMigration",
+        "tawasulSession",
+        "tawasulString",
+        "tawasulTT",
+        "tos_api_token",
+        "tos_api_webhook",
+        "tos_api_webhookDelivery"
+    ],
+    "resources": 384,
+    "curated": 131,
+    "generatedResources": 253,
+    "writable": 379,
+    "actions": 397,
+    "mappedActions": 332
+}

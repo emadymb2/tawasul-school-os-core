@@ -1,0 +1,64 @@
+details:
+    type: externalAssessment
+    name: External Assessments
+    table: tawasulExternalAssessmentStudentEntry
+    modes: { update: true, insert: true, export: true }
+access:
+    module: Formal Assessment
+    action: External Assessment Data_manage
+fields:
+    tawasulExternalAssessmentID:
+        name: "External Assessment"
+        desc: "Name Short"
+        args: { filter: string, custom: true, required: true, readonly: [tawasulExternalAssessmentStudentEntry] }
+        relationship: { table: tawasulExternalAssessment, key: tawasulExternalAssessmentID, field: nameShort  }
+    date:
+        name: "Assessment Date"
+        desc: ""
+        args: {filter: date, custom: true, required: true, readonly: [tawasulExternalAssessmentStudentEntry] }
+    tawasulPersonID:
+        name: "Student"
+        desc: "Username, Student ID or Email (if unique)"
+        args: { filter: username, required: true }
+        relationship: { table: tawasulPerson, key: tawasulPersonID, field: username|email|studentID  }
+    tawasulExternalAssessmentStudentID:
+        name: "Student Assessment ID"
+        desc: ""
+        args: { filter: string, linked: tawasulPersonID }
+        relationship: { table: tawasulExternalAssessmentStudent, key: tawasulExternalAssessmentStudentID, field: [ tawasulPersonID, date, tawasulExternalAssessmentID ]  }
+    category:
+        name: "Field Name Category"
+        desc: "Must match value of tawasulExternalAssessmentField.category in database"
+        args: { filter: string, custom: true, required: true, readonly: true }
+    tawasulExternalAssessmentFieldID:
+        name: "Field Name"
+        desc: "Must match value of tawasulExternalAssessmentField.name in database."
+        args: { filter: string, custom: true, required: true }
+        relationship: { table: tawasulExternalAssessmentField, key: tawasulExternalAssessmentFieldID, field: [ name, category, tawasulExternalAssessmentID ]  }
+    tawasulScaleGradeID:
+        name: "Result"
+        desc: "Must match value of tawasulScaleGrade.value in database."
+        args: { filter: string }
+        relationship: { table: tawasulScaleGrade, key: tawasulScaleGradeID, join: tawasulExternalAssessmentField, on: [tawasulScaleID, tawasulScaleID], field: [ value, tawasulExternalAssessmentFieldID ] }
+tables:
+    tawasulExternalAssessmentStudent:
+        primaryKey:
+            tawasulExternalAssessmentStudentID
+        uniqueKeys:
+            - [ tawasulExternalAssessmentID, tawasulPersonID, date ]
+        fields:
+            - tawasulExternalAssessmentID
+            - tawasulPersonID
+            - date
+    tawasulExternalAssessmentStudentEntry:
+        primaryKey:
+            tawasulExternalAssessmentStudentEntryID
+        uniqueKeys:
+            - [ tawasulExternalAssessmentStudentID, tawasulExternalAssessmentFieldID ]
+        fields:
+            - tawasulExternalAssessmentID
+            - date
+            - tawasulExternalAssessmentStudentID
+            - category
+            - tawasulExternalAssessmentFieldID
+            - tawasulScaleGradeID

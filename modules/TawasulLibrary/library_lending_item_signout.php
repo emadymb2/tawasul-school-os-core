@@ -1,0 +1,175 @@
+<?php
+/*
+Gibbon: the flexible, open school platform
+Founded by Ross Parker at ICHK Secondary. Built by Ross Parker, Sandra Kuipers and the Gibbon community (https://gibbonedu.org/about/)
+Copyright © 2010, Gibbon Foundation
+Gibbon™, Gibbon Education Ltd. (Hong Kong)
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <http://www.gnu.org/licenses/>.
+*/
+
+use TawasulOS\Domain\System\SettingGateway;
+use TawasulOS\Forms\Form;
+use TawasulOS\Forms\DatabaseFormFactory;
+use TawasulOS\Services\Format;
+
+$tawasulLibraryItemID = trim($_GET['tawasulLibraryItemID'] ?? '');
+$tawasulLibraryItemEventID = $_GET['tawasulLibraryItemEventID'] ?? '';
+
+$page->breadcrumbs
+    ->add(__('Lending & Activity Log'), 'library_lending.php')
+    ->add(__('View Item'), 'library_lending_item.php', ['tawasulLibraryItemID' => $tawasulLibraryItemID])
+    ->add(__('Sign Out'));
+
+$name = $_GET['name'] ?? '';
+$tawasulLibraryTypeID = $_GET['tawasulLibraryTypeID'] ?? '';
+$tawasulSpaceID = $_GET['tawasulSpaceID'] ?? '';
+$status = $_GET['status'] ?? '';
+
+if (isActionAccessible($guid, $connection2, '/modules/TawasulLibrary/library_lending_item_signOut.php') == false) {
+    // Access denied
+    $page->addError(__('You do not have access to this action.'));
+} else {
+    //Proceed!
+    if (empty($tawasulLibraryItemID)) {
+        $page->addError(__('You have not specified one or more required parameters.'));
+    } else {
+
+            $data = array('tawasulLibraryItemID' => $tawasulLibraryItemID);
+            $sql = 'SELECT * FROM tawasulLibraryItem WHERE tawasulLibraryItemID=:tawasulLibraryItemID';
+            $result = $connection2->prepare($sql);
+            $result->execute($data);
+
+        if ($result->rowCount() != 1) {
+            $page->addError(__('The specified record does not exist.'));
+        } else {
+            $values = $result->fetch();
+
+            if ($values['returnAction'] != '') {
+                if ($values['tawasulPersonIDReturnAction'] != '') {
+
+                        $dataPerson = array('tawasulPersonID' => $values['tawasulPersonIDReturnAction']);
+                        $sqlPerson = 'SELECT surname, preferredName FROM tawasulPerson WHERE tawasulPersonID=:tawasulPersonID';
+                        $resultPerson = $connection2->prepare($sqlPerson);
+                        $resultPerson->execute($dataPerson);
+
+                    if ($resultPerson->rowCount() == 1) {
+                        $rowPerson = $resultPerson->fetch();
+                        $person = Format::name('', htmlPrep($rowPerson['preferredName']), htmlPrep($rowPerson['surname']), 'Student');
+                    }
+                }
+
+                echo "<div class='warning'>";
+                if ($values['returnAction'] == 'Make Available') {
+                    echo __('This item has been marked to be <u>made available</u> for loan on return.');
+                }
+                if ($values['returnAction'] == 'Reserve' and $values['tawasulPersonIDReturnAction'] != '') {
+                    echo __("This item has been marked to be <u>reserved</u> for <u>$person</u> on return.");
+                }
+                if ($values['returnAction'] == 'Decommission' and $values['tawasulPersonIDReturnAction'] != '') {
+                    echo __("This item has been marked to be <u>decommissioned</u> by <u>$person</u> on return.");
+                }
+                if ($values['returnAction'] == 'Repair' and $values['tawasulPersonIDReturnAction'] != '') {
+                    echo __("This item has been marked to be <u>repaired</u> by <u>$person</u> on return.");
+                }
+                echo ' '.__('You can change this below if you wish.');
+                echo '</div>';
+            }
+
+            $form = Form::create('libraryLendingSignout', $session->get('absoluteURL').'/modules/'.$session->get('module')."/library_lending_item_signoutProcess.php?&name=$name&tawasulLibraryTypeID=$tawasulLibraryTypeID&tawasulSpaceID=$tawasulSpaceID&status=$status");
+            $form->setFactory(DatabaseFormFactory::create($pdo));
+
+            $form->addHiddenValue('address', $session->get('address'));
+            $form->addHiddenValue('tawasulLibraryItemID', $tawasulLibraryItemID);
+            $form->addHiddenValue('statusCurrent', $values['status']);
+            
+            if (!empty($name) or !empty($tawasulLibraryTypeID) or !empty($tawasulSpaceID) or !empty($status)) {
+                $params = [
+                    "tawasulLibraryItemEventID" => $tawasulLibraryItemEventID,
+                    "tawasulLibraryItemID" => $tawasulLibraryItemID,
+                    "name" => $name,
+                    "tawasulLibraryTypeID" => $tawasulLibraryTypeID,
+                    "tawasulSpaceID" => $tawasulSpaceID,
+                    "status" => $status
+                ];
+                $form->addHeaderAction('back', __('Back'))
+                    ->setURL('/modules/TawasulLibrary/library_lending_item.php')
+                    ->addParams($params);
+            }
+
+            $form->addRow()->addHeading('Item Details', __('Item Details'));
+
+            $row = $form->addRow();
+                $row->addLabel('idLabel', __('ID'));
+                $row->addTextField('idLabel')->setValue($values['id'])->readonly()->required();
+
+            $row = $form->addRow();
+                $row->addLabel('name', __('Name'));
+                $row->addTextField('name')->setValue($values['name'])->readonly()->required();
+
+            $row = $form->addRow();
+                $row->addLabel('statusCurrentText', __('Current Status'));
+                $row->addTextField('statusCurrentText')->setValue(__($values['status']))->readonly()->required();
+
+            $form->addRow()->addHeading('This Event', __('This Event'));
+
+            $statuses = array(
+                'On Loan' => __('On Loan'),
+                'Reserved' => __('Reserved'),
+                'Decommissioned' => __('Decommissioned'),
+                'Lost' => __('Lost'),
+                'Repair' => __('Repair')
+            );
+            $row = $form->addRow();
+                $row->addLabel('status', __('New Status'));
+                $row->addSelect('status')->fromArray($statuses)->required()->selected('On Loan')->placeholder();
+
+            $row = $form->addRow();
+                $row->addLabel('tawasulPersonIDStatusResponsible', __('Responsible User'))->description(__('Who is responsible for this new status?'));
+                $row->addSelectUsers('tawasulPersonIDStatusResponsible', $session->get('tawasulSchoolYearID'), ['includeStudents' => true, 'includeStaff' => true])->placeholder()->required();
+
+            $loanLength = $container->get(SettingGateway::class)->getSettingByScope('Library', 'defaultLoanLength');
+            $loanLength = (is_numeric($loanLength) == false or $loanLength < 0) ? 7 : $loanLength ;
+            $row = $form->addRow();
+                $row->addLabel('returnExpected', __('Expected Return Date'))->description(sprintf(__('Default renew length is today plus %1$s day(s)'), $loanLength));
+                $row->addDate('returnExpected')->setValue(date($session->get('i18n')['dateFormatPHP'], time() + ($loanLength * 60 * 60 * 24)))->required()->addTodayButton()->addDayOffsetButtons([1, 7]);
+
+            $row = $form->addRow();
+                $row->addLabel('notifyParents', __('Notify Parents'));
+                $row->addYesNo('notifyParents')->selected('N');
+
+            $row = $form->addRow()->addHeading('On Return', __('On Return'));
+
+            $actions = array(
+                'Reserve' => __('Reserve'),
+                'Decommission' => __('Decommission'),
+                'Repair' => __('Repair')
+            );
+            $row = $form->addRow();
+                $row->addLabel('returnAction', __('Action'))->description(__('What to do when item is next returned.'));
+                $row->addSelect('returnAction')->fromArray($actions)->selected($values['returnAction'])->placeholder();
+
+            $row = $form->addRow();
+                $row->addLabel('tawasulPersonIDReturnAction', __('Responsible User'))->description(__('Who will be responsible for the future status?'));
+                $row->addSelectUsers('tawasulPersonIDReturnAction', $session->get('tawasulSchoolYearID'), ['includeStudents' => true, 'includeStaff' => true])->placeholder();
+
+
+            $row = $form->addRow();
+                $row->addFooter();
+                $row->addSubmit();
+
+            echo $form->getOutput();
+        }
+    }
+}

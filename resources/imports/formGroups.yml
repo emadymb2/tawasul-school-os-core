@@ -1,0 +1,58 @@
+details:
+    type: formGroups
+    name: Form Groups
+    table: tawasulFormGroup
+    modes: { update: true, insert: true, export: true }
+access:
+    module: School Admin
+    action: Manage Form Groups
+primaryKey:
+    tawasulFormGroupID
+uniqueKeys:
+    - [ tawasulSchoolYearID, name ]
+    - [ tawasulSchoolYearID, nameShort ]
+table:
+    tawasulSchoolYearID: 
+        name: "School Year"
+        desc: "School year name, as set in School Admin. Must already exist."
+        args: { filter: schoolyear,  required: true }
+        relationship: { table: tawasulSchoolYear, key: tawasulSchoolYearID, field: name  }
+    name: 
+        name: "Name"
+        desc: "Needs to be unique in school year."
+        args: { filter: string, required: true }
+    nameShort: 
+        name: "Short Name"
+        desc: "Needs to be unique in school year."
+        args: { filter: string, required: true }
+    tawasulPersonIDTutor: 
+        name: "Tutor 1"
+        desc: "Up to 3 per form group. The first-listed will be marked as \"Main Tutor\"."
+        args: { filter: string }
+        relationship: { table: tawasulPerson, key: tawasulPersonID, field: username|email  }
+    tawasulPersonIDTutor2: 
+        name: "Tutor 2"
+        desc: ""
+        args: { filter: string }
+        relationship: { table: tawasulPerson, key: tawasulPersonID, field: username|email  }
+    tawasulPersonIDTutor3: 
+        name: "Tutor 3"
+        desc: ""
+        args: { filter: string }
+        relationship: { table: tawasulPerson, key: tawasulPersonID, field: username|email  }
+    tawasulSpaceID: 
+        name: "Location"
+        desc: "Name"
+        relationship: { table: tawasulSpace, key: tawasulSpaceID, field: name }
+    tawasulFormGroupIDNext: 
+        name: "Next Form Group"
+        desc: "Short Name"
+        relationship: { table: tawasulFormGroup, key: tawasulFormGroupID, field: nameShort  }
+    attendance:
+        name: "Track Attendance?"
+        desc: "Should this class allow attendance to be taken?"
+        args: { filter: yesno, custom: true }
+    website: 
+        name: "Website"
+        desc: "Include http://"
+        args: { filter: url, custom: true }

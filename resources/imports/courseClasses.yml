@@ -1,0 +1,40 @@
+details:
+    type: courseClasses
+    name: Classes
+    table: tawasulCourseClass
+    modes: { update: true, insert: true, export: true }
+access:
+    module: Timetable Admin
+    action: Manage Courses & Classes
+primaryKey:
+    tawasulCourseClassID
+uniqueKeys:
+    - [ tawasulCourseID, name ]
+    - [ tawasulCourseID, nameShort ]
+table:
+    tawasulSchoolYearID:
+        name: "School Year"
+        desc: "School year name, as set in School Admin. Must already exist."
+        args: { filter: schoolyear, required: true, readonly: true, custom: true }
+        relationship: { table: tawasulSchoolYear, key: tawasulSchoolYearID, field: name  }
+    tawasulCourseID:
+        name: "Course"
+        desc: "Short Name"
+        args: { filter: string, required: true }
+        relationship: { table: tawasulCourse, key: tawasulCourseID, field: [ nameShort, tawasulSchoolYearID ]  }
+    name:
+        name: "Name"
+        desc: "Must be unique for this course."
+        args: { filter: string, required: true }
+    nameShort:
+        name: "Short Name"
+        desc: "Must be unique for this course."
+        args: { filter: string, required: true }
+    reportable:
+        name: "Reportable?"
+        desc: "Should this class show in reports?"
+        args: { filter: yesno, custom: true }
+    attendance:
+        name: "Track Attendance?"
+        desc: "Should this class allow attendance to be taken?"
+        args: { filter: yesno, custom: true }
